@@ -375,37 +375,39 @@ class Embedded_GP_Model:
         # self.d = d
         if d:
             betas_list = self.GP_Processing(d=d, betas=betas)
-            self.betas = betas
-            results, sens = self.equation(betas_list, self.discmtx, d=d)
+            # self.betas = betas
+            results, sens, neg_vars = self.equation(betas_list, self.discmtx, d=d)
         else:
             betas_list = self.GP_Processing(d=d, betas=betas)
-            self.betas = betas
+            # self.betas = betas
             results = self.equation(betas_list, self.discmtx, d=d)
 
         # Calculate neg log likelihood
-        n = min(len(self.data), len(results))
+        n = len(self.data)
         error = np.zeros(n)
         if d:
             sens = np.array(sens)
-            sens_adjusted = np.ones((len(self.betas)-1,n))*1e-3
+            sens_adjusted = np.ones((len(betas)-1,n))*1e-3
 
-        for i in range(n):
+        for i in range(min(n,len(results))):
             error[i] = self.data[i] - results[i]
             if d:
                 sens_adjusted[:,i] = sens[:,i]
-        ln_variance = betas[-1]
+        ln_variance = 0.4
         variance = jax.nn.softplus(ln_variance) + 1e-6
+        dvar = np.exp(ln_variance)/(1+np.exp(ln_variance))
         neg_log_likelihood = 0.5 * np.log(2 * np.pi * variance) + (error ** 2 / (2 * variance))
 
         d_neg_log_likelihood_prior = betas[:-1] / 1000
         if d:
             dnll_vec = []
-            for i, beta_deriv in enumerate(sens):
+            for i, beta_deriv in enumerate(sens_adjusted):
                 d_neg_log_likelihood = np.sum(-(error/variance)*beta_deriv) + d_neg_log_likelihood_prior[i]
                 dnll_vec.append(d_neg_log_likelihood)
-            dnll_vec.append(np.sum(1/(variance) - (error**2)/(variance**2)))
+            # dnll_vec.append(np.sum(1/(2*variance)*dvar - dvar*(error**2)/(2*(variance**2))))
+            dnll_vec.append(0)
 
-        neg_log_prior = -np.log(jax.scipy.stats.multivariate_normal.pdf(betas[:-1], np.zeros((len(self.betas) - 1)), 1000*np.eye((len(self.betas) - 1))))
+        neg_log_prior = -np.log(jax.scipy.stats.multivariate_normal.pdf(betas[:-1], np.zeros((len(betas) - 1)), 1000*np.eye((len(betas) - 1))))
 
 
         # Calculate variance prior (Will be used in future Calculations)
@@ -413,7 +415,8 @@ class Embedded_GP_Model:
         if not d:
             return np.sum(neg_log_likelihood) + neg_log_prior
         if d:
-            return np.sum(neg_log_likelihood) + neg_log_prior, dnll_vec
+            # print(np.array(dnll_vec))
+            return np.sum(neg_log_likelihood) + neg_log_prior, np.array(dnll_vec), neg_vars
         # return np.sum(neg_log_likelihood) + neg_log_prior, dnll_vec # + neg_log_ln_p_variance
     
     def d_neg_log_likelihood_create(self):
@@ -448,7 +451,7 @@ class Embedded_GP_Model:
             print(t2)
             return grad
 
-        from pathos.pools import ParallelPool
+        # from pathos.pools import ParallelPool
 
         # def numerical_grad_p(betas, h=1e-5, num_workers=6):
         #
@@ -500,13 +503,17 @@ class Embedded_GP_Model:
         # Reassign for brevity in coding
         U = self.neg_log_likelihood
         # grad_U = self.d_neg_log_likelihood
-
+        # U(current_q)
 
         def leapfrog_integrator(current_q, p):
             ### Begin Leapfrog Integration
             # Make half step for momentum at the beginning
-            null, grad_q = U(current_q)
+            # print('test')
+
+
+            null, grad_q, neg_vars = U(current_q)
             p = p - epsilon * grad_q / 2
+
 
             # def loop_body(i, val):
             #     q, p = val
@@ -520,29 +527,37 @@ class Embedded_GP_Model:
             q = current_q
             for i in range(L):
                 q = q + epsilon * (Cov_Matrix @ p.reshape(-1, 1)).flatten()
-                null, grad_q = U(q)
+                # print(f"q @ {L}: {q} ")
+                null, grad_q, neg_vars = U(q)
                 p_update = epsilon * grad_q
+                print(f"grad @ {i}: {grad_q}")
                 last_iter_factor = 1 - (i == L - 1)
                 p = p - last_iter_factor * p_update
+                if neg_vars:
+                    raise ValueError("Negative variables")
+                if any(np.isnan(grad_q)):
+                    print('grad is nan')
+                    raise ValueError("Gradient is NaN")
 
 
             # Make half step for momentum at the end
-            null, grad_q = U(q)
-            p = p - epsilon * grad_q / 2
-            return p
+            null, grad_q, neg_vars = U(q)
+            p = p - (epsilon * grad_q / 2)
+            return p, q
         ### End Leapfrog Integration
             # Random Momentum Sampling
         q = current_q
         tol = 1
-        while tol < 5:
+        while tol < 20:
             mean = np.zeros(len(M))
-            p = random.multivariate_normal(mean, self.M)
+            p = random.multivariate_normal(mean, M)
+            p[-1] = 0
             current_p = p
             try:
-                p = leapfrog_integrator(current_q, p)
+                p, q = leapfrog_integrator(current_q, current_p)
             except:
                 print(f"leapfrog failed at \n q = {current_q}\n p = {current_p}")
-                if tol > 4:
+                if tol > 20:
                     raise ValueError("LeapFrog integration failed")
                 tol += 1
             else:
@@ -559,8 +574,13 @@ class Embedded_GP_Model:
         proposed_U = U(q, d=False)
         proposed_K = sum(p @ Cov_Matrix @ p.reshape(-1, 1)) / 2
 
-        accept_prob = np.exp(current_U - proposed_U + current_K - proposed_K)
+        print(f"Current U: {current_U}, Proposed U: {proposed_U}")
+        print(f"Current K: {current_K}, Proposed K: {proposed_K}")
 
+
+        accept_prob = np.exp(current_U - proposed_U + current_K - proposed_K)
+        print(f"Acceptance Prob: {accept_prob}")
+        print(f"del q: {current_q-q}")
         # # If statement of Metropolis Hastings Criteria in JAX for optimized performance
         # def true_branch(_):
         #     return q, True
@@ -575,7 +595,7 @@ class Embedded_GP_Model:
             accept = False
         # final, accept = random.uniform(subkey) < accept_prob, true_branch, false_branch, None
 
-        return final, accept, U(final)
+        return final, accept, U(final, d=False)
 
     
     def leapfrog(self, theta, r, grad, epsilon, f, Cov_Matrix):
@@ -616,10 +636,9 @@ class Embedded_GP_Model:
         # make new step in theta
         thetaprime = theta + epsilon * (Cov_Matrix @ rprime.reshape(-1, 1)).flatten()
         #compute new gradient
-        t1 = timeit.default_timer()
+
         logpprime, gradprime = f(thetaprime)
-        t2 = timeit.default_timer() - t1
-        print(t2)
+
         # make half step in r again
         rprime = rprime + 0.5 * epsilon * gradprime
         return thetaprime, rprime, gradprime, logpprime
@@ -631,13 +650,13 @@ class Embedded_GP_Model:
         Algorithm 4 from original paper 
         """
         def f(theta):
-            U, grad_test = self.neg_log_likelihood(theta, d=True)
+            U, grad_test, neg_vars = self.neg_log_likelihood(theta, d=True)
             # grad0 = self.d_neg_log_likelihood(theta)
             return U*-1, np.array(grad_test)*-1
 
         logp0, grad0 = f(theta0)
 
-        epsilon = 5.
+        epsilon = 1e-2
         mean = np.zeros(len(self.M))
 
         r0 = random.multivariate_normal(mean, self.M)
@@ -667,7 +686,8 @@ class Embedded_GP_Model:
         # The goal is to find the current acceptance probability and then move
         # epsilon in a direction until it crosses the 50% acceptance threshold
         # via doubling of epsilon
-        logacceptprob = logpprime-logp0-0.5*((rprime @ rprime)-(r0 @ r0))
+        # logacceptprob = logpprime-logp0-0.5*((rprime @ rprime)-(r0 @ r0))
+        logacceptprob = logpprime - logp0 - 0.5 * (rprime @ self.Cov_Matrix @ rprime - r0 @ self.Cov_Matrix @ r0)
 
         if logacceptprob > np.log(0.5):
             a = 1.
@@ -764,6 +784,11 @@ class Embedded_GP_Model:
 
         self.Cov_Matrix = np.eye(len(self.GP)*(len(self.discmtx)+1) +1)
         self.M = np.linalg.inv(self.Cov_Matrix)
+        # mass_diag = np.ones(len(self.GP)*(len(self.discmtx)+1) +1)
+        # mass_diag[-1] = 0.01  # variance
+        # mass_diag[2:4] = 0.01  # sensitive betas if needed
+        # self.M = np.diag(mass_diag)
+        self.Cov_Matrix = np.linalg.inv(self.M)
         neg_log_likelihood_array = np.zeros(draws+1, dtype=float)
         acceptance_array = np.zeros(draws+1, dtype=bool)
         samples = np.ones((draws+1, (len(self.GP)*(len(self.discmtx)+1))+1)) # Starting point always all betas = 1
@@ -781,26 +806,21 @@ class Embedded_GP_Model:
         # Loop for HMC Sampling        
         for i in range(draws):
             # Print iteration in loop
-            print(i)
+
             # Actual HMC Sampling
             sample, accept, neg_log_likelihood_sample= self.HMC(epsilon = self.epsilon,
-                                                                               L = 20, 
+                                                                               L = 8,
                                                                                current_q = samples[i],
                                                                                M = self.M,
                                                                                Cov_Matrix = self.Cov_Matrix, 
                                                                                )
             
             # Save HMC sampling results
-            for i in range(draws - 1):  # Avoids out-of-bounds access at `i+1`
-                sample = np.random.randn()  # Replace with actual sample
-                accept = np.random.rand() > 0.5  # Replace with actual acceptance condition
-                neg_log_likelihood_sample = np.random.rand()  # Replace with actual likelihood value
+            print([i,accept])
+            samples[i + 1] = sample
+            acceptance_array[i + 1] = accept
+            neg_log_likelihood_array[i + 1] = neg_log_likelihood_sample
 
-                # Direct NumPy updates
-                samples[i + 1] = sample
-                acceptance_array[i + 1] = accept
-                neg_log_likelihood_array[i + 1] = neg_log_likelihood_sample
-            # To make epsilon adaptive, modify based on acceptance rate (ideal 65% per paper)
             if (i+1) % 50 == 0:
                 if sum(acceptance_array[i-50:i]) < 15:
                     self.epsilon = self.epsilon*0.5
@@ -934,6 +954,7 @@ class Embedded_GP_Model:
                     damtx = np.append(damtx, vecs, axis=0)
                 [dam,null] = np.shape(damtx)
                 self.discmtx = damtx.astype(int)
+                self.discmtx = [[1],[2]]
                 print(damtx)
 
                 beters, null, neg_log_likelihood = self.full_sample(draws)
