@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import warnings
 
 import os
-os.environ['JAX_PLATFORM_NAME'] = 'gpu'
+os.environ['JAX_PLATFORM_NAME'] = 'cpu'
 
 from FoKL import getKernels
 import itertools

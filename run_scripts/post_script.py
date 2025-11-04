@@ -9,10 +9,10 @@ from src.embedded_gp import Create_Params
 
 import matplotlib.pyplot as plt
 
-samples = '/home/WVU-AD/ds0172/Desktop/PyBamm-Embedded-GP-main/Embeddded-GPs/src/Data/samples_j0_10_30.csv'
-BIC = '/home/WVU-AD/ds0172/Desktop/PyBamm-Embedded-GP-main/Embeddded-GPs/results/BIC_10_30.csv'
+samples = '/home/WVU-AD/ds0172/Desktop/PyBamm-Embedded-GP-main/src-non-jax/src/Data/samples_j0_10_30.csv'
+BIC = '/home/WVU-AD/ds0172/Desktop/PyBamm-Embedded-GP-main/src-non-jax/results/BIC_10_30.csv'
 
-testing = pd.read_csv('/home/WVU-AD/ds0172/Desktop/PyBamm-Embedded-GP-main/Embeddded-GPs/src/Data/modEpscorData.csv')
+testing = pd.read_csv('/home/WVU-AD/ds0172/Desktop/PyBamm-Embedded-GP-main/src-non-jax/src/Data/modEpscorData.csv')
 
 i_end = 4365
 

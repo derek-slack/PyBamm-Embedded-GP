@@ -1,9 +1,8 @@
 import os
 
-from post_process import PostProcess
+from src.embedded_gp.post_process import PostProcess
 
-os.environ['JAX_PLATFORM_NAME'] = 'gpu'
-
+os.environ['JAX_PLATFORM_NAME'] = 'cpu'
 import pybamm
 import pybamm as pb
 import numpy as np
@@ -15,6 +14,9 @@ import matplotlib.pyplot as plt
 from FoKL import getKernels
 import warnings
 
+from pathlib import Path
+
+# csv_path = Path("./src/Data/modEpscorData.csv")
 
 phis = getKernels.sp500()
 warnings.filterwarnings("ignore")
@@ -41,7 +43,7 @@ def normalize_inputs(inputs, min, max):
     normalized = (inputs - min) / (max - min)
     return normalized
 
-testing = pd.read_csv('/home/WVU-AD/ds0172/Desktop/PyBamm-Embedded-GP-main/Embeddded-GPs/src/Data/modEpscorData.csv')
+testing = pd.read_csv('/Users/derekslack/Pybamm-Embedded-GP-live/src/Data/modEpscorData.csv')
 
 i_end = 4365
 
@@ -108,7 +110,7 @@ current_interpolant = pybamm.Interpolant(t, Amps, pybamm.t)#, interpolator="JAX"
 param1["Current function [A]"] = current_interpolant
 
 
-samples = np.loadtxt("/home/WVU-AD/ds0172/Desktop/PyBamm-Embedded-GP-main/Embeddded-GPs/src/Data/samples_j0_10_14.csv")
+# samples = np.loadtxt("/home/WVU-AD/ds0172/Desktop/PyBamm-Embedded-GP-main/src-non-jax/src/Data/samples_j0_10_14.csv")
 # beta0 = np.array([2.2,0,0, 0.4,0,0,-32,0,0, 0.4])
 
 # DP = np.mean(samples[:,4][-200:])
@@ -166,8 +168,8 @@ model.solution = None
 
 from src.embedded_gp import post_process
 #
-# samples = '/home/WVU-AD/ds0172/Desktop/PyBamm-Embedded-GP-main/Embeddded-GPs/src/Data/samples_j0_10_30.csv'
-# BIC = '/home/WVU-AD/ds0172/Desktop/PyBamm-Embedded-GP-main/Embeddded-GPs/BIC_10_30.csv'
+# samples = '/home/WVU-AD/ds0172/Desktop/PyBamm-Embedded-GP-main/src-non-jax/src/Data/samples_j0_10_30.csv'
+# BIC = '/home/WVU-AD/ds0172/Desktop/PyBamm-Embedded-GP-main/src-non-jax/BIC_10_30.csv'
 #
 # PP = post_process.PostProcess(samples, BIC, Volt)
 # avg_betas = PP.average_samples(100)
@@ -189,7 +191,7 @@ model.set_equation(equation)
 
 samples, matrix, BIC = model.full_routine(draws=2000, init_betas=beta0, tolerance=0)
 
-np.savetxt('src/Data/samples_j0_10_30.csv', samples)
-np.savetxt('results/matrix_10_30.csv', matrix)
-np.savetxt('results/BIC_10_30.csv', BIC)
+np.savetxt('../results/samples_j0_10_30.csv', samples)
+np.savetxt('../results/matrix_10_30.csv', matrix)
+np.savetxt('../results/BIC_10_30.csv', BIC)
 

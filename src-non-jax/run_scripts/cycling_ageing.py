@@ -73,14 +73,14 @@ preds = fmodel.evaluate(inputs=tt, betas = betas_D_NCM, avgbetas=True)
 fmodel.predictions = preds
 fmodel.save('negativemodelD.fokl')
 #
-positive_j0_model = FoKLRoutines.load('../modesl/positive_j0_model.fokl')
+positive_j0_model = FoKLRoutines.load('../models/positive_j0_model.fokl')
 n = 100
 x1 = np.linspace(0,35839,n)
 preds = positive_j0_model.evaluate(inputs=x1, clean = True)
 positive_j0_model.predictions = preds
 positive_j0_model.save('positive_j0_model.fokl')
 
-negative_j0_model = FoKLRoutines.load('../modesl/negative_j0_model.fokl')
+negative_j0_model = FoKLRoutines.load('../models/negative_j0_model.fokl')
 n = 100
 x1 = np.linspace(0,35839,n)
 tt = gridmaker(negative_j0_model.minmax,n)
@@ -107,7 +107,7 @@ def pf(sto,T):
     return interp
 
 def pj0(I):
-    fmodel = FoKLRoutines.load('../modesl/positive_j0_model.fokl')
+    fmodel = FoKLRoutines.load('../models/positive_j0_model.fokl')
     n = 100
     x1 = np.linspace(fmodel.minmax[0][0], fmodel.minmax[0][1], n)
 
@@ -119,7 +119,7 @@ def pj0(I):
     return interp
 
 def nj0(I):
-    fmodel = FoKLRoutines.load('../modesl/negative_j0_model.fokl')
+    fmodel = FoKLRoutines.load('../models/negative_j0_model.fokl')
 
     n = 100
     x1 = np.linspace(fmodel.minmax[0][0], fmodel.minmax[0][1], n)

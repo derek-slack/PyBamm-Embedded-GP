@@ -5,7 +5,7 @@ import numpy as np
 
 param = pb.ParameterValues("Mohtat2020")
 
-filename = '/home/WVU-AD/ds0172/Desktop/PyBamm-Embedded-GP-main/Embeddded-GPs/src/Data/EPSCoR_Char_B4 - 024.csv'
+filename = '/home/WVU-AD/ds0172/Desktop/PyBamm-Embedded-GP-main/src-non-jax/src/Data/EPSCoR_Char_B4 - 024.csv'
 i_D_start = 6419
 i_D_end = 51115
 

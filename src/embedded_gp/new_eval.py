@@ -1,5 +1,3 @@
-import timeit
-
 import jax.numpy as jnp
 import jax.scipy as jsp
 import numpy as np
@@ -16,8 +14,17 @@ import pybamm as pybamm
 
 def evaluate_pybamm(betas, mtx, inputs, coeff = None):
     """
-    Pybamm Function evaluation
-    betas: indexed from beta list that relates to
+    Pybamm Function evaluation with Cubic Spline Polynomial
+    inputs:
+        betas: PyBaMM input parameter list, [Beta_input_parameter0, Beta_input_parameter1, ...]
+        mtx: Interaction matrix for GP, (n x m)
+            n - number of GP terms
+            m - number of input dimensions
+        inputs: PyBaMM inputs to function, the inputs that GP is built on
+        coeff: experimental input of pre-made interpolant objects
+
+    returns:
+        mean: result of GP evaluation
     """
     # tt = timeit.default_timer()
     #
@@ -97,6 +104,51 @@ def evaluate_pybamm(betas, mtx, inputs, coeff = None):
     # else:
     return mean
 
+def evaluate_pybamm_bernoulli(betas, mtx, inputs):
+    """
+     Pybamm Function evaluation with Bernoulli Polynomial
+    inputs:
+        betas: PyBaMM input parameter list, [Beta_input_parameter0, Beta_input_parameter1, ...]
+        mtx: Interaction matrix for GP, (n x m)
+            n - number of GP terms
+            m - number of input dimensions
+        inputs: PyBaMM inputs to function, the inputs that GP is built on
+
+    returns:
+        mean: result of GP evaluation
+    """
+
+    n = jnp.shape(inputs)[0]  # Size of normalized inputs
+    num_basis_terms = len(mtx)
+    num_inputs = len(mtx[0])
+    X_sol = []
+
+
+    mtx = jnp.array(mtx)
+
+    def bernoulli_func(phis, num, x):
+        if num > 0:
+            coeff = phis[num-1]
+            result = coeff[0] + sum(coeff[k] * (x**k) for k in range(1,len(coeff)))
+        else:
+            result = 1.0
+        return result
+
+    for i in range(n):
+        for j in range(num_basis_terms):
+            phi = 1
+            for k in range(num_inputs):
+                num = mtx[j][k]
+                phi*= bernoulli_func(phis_bernoulli, num, inputs[i][k])
+            X_sol.append(phi)
+
+    X_sol_ones = betas[0]
+    mean = X_sol_ones
+    for i in range(len(X_sol)):
+        X_sol_betas = X_sol[i]*betas[i+1]
+        mean += X_sol_betas
+
+    return mean
 
 def evaluate_pybamm_test(betas, mtx, inputs, phis):
     """
@@ -166,57 +218,3 @@ def evaluate_pybamm_test(betas, mtx, inputs, phis):
 
     return mean
 
-def evaluate_pybamm_bernoulli(betas, mtx, inputs, coeff = None):
-    """
-    Pybamm Function evaluation
-    betas: indexed from beta list that relates to
-    """
-    # tt = timeit.default_timer()
-    #
-    # print(f"time to spline eval: {timeit.default_timer()-tt}")
-
-
-    n = jnp.shape(inputs)[0]  # Size of normalized inputs
-    num_basis_terms = len(mtx)
-    num_inputs = len(mtx[0])
-    X_sol = []
-
-
-    mtx = jnp.array(mtx)
-
-    def bernoulli_func(phis, num, x):
-        if num > 0:
-            coeff = phis[num-1]
-            result = coeff[0] + sum(coeff[k] * (x**k) for k in range(1,len(coeff)))
-        else:
-            result = 1.0
-        return result
-
-    for i in range(n):
-        for j in range(num_basis_terms):
-            phi = 1
-            for k in range(num_inputs):
-                num = mtx[j][k]
-                phi*= bernoulli_func(phis_bernoulli, num, inputs[i][k])
-            X_sol.append(phi)
-
-    X_sol_ones = betas[0]
-    mean = X_sol_ones
-    for i in range(len(X_sol)):
-        X_sol_betas = X_sol[i]*betas[i+1]
-        mean += X_sol_betas
-
-    return mean
-
-
-
-
-def interpolator_500(x_l, y_l, xi):
-    x2 = pybamm.Ceil(xi)
-    x1 = pybamm.Floor(xi)
-
-    y1 = y_l[x1]
-    y2 = y_l[x2]
-
-    yi = y2 - (y2-y1)*(x2-xi)/(x2-x1)
-    return yi

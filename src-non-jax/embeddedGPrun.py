@@ -19,7 +19,7 @@ warnings.filterwarnings("ignore")
 
 k = "symmetric Butler-Volmer"
 pb.set_logging_level("NOTICE")
-batmodel = pybamm.lithium_ion.SPMe()
+batmodel = pybamm.lithium_ion.SPM()
 # batmodel.events = []
 # batmodel.convert_to_format = 'jax'
 
@@ -30,12 +30,8 @@ os.makedirs(save_folder, exist_ok=True)
 batgeometry = batmodel.default_geometry
 
 # Set Parameter values
-# param1 = pb.ParameterValues("Mohtat2020")
+param1 = pb.ParameterValues("Mohtat2020")
 
-from src.Data import from_paper_params
-# from from_paper_params import get_samsung_25R_parameters
-
-param1 = from_paper_params.get_samsung_25r_parameters_v7()
 
 # Define the phis (basis functions) used
 
@@ -45,15 +41,15 @@ def normalize_inputs(inputs, min, max):
     return normalized
 
 
-# C = pd.read_csv('/home/WVU-AD/ds0172/Desktop/PyBamm-Embedded-GP-main/Embeddded-GPs/src/Data/ChargeCycle.csv', header=None)
-# D = pd.read_csv('/home/WVU-AD/ds0172/Desktop/PyBamm-Embedded-GP-main/Embeddded-GPs/src/Data/DischargeCycle.csv', header=None)
-testing = pd.read_csv('/home/WVU-AD/ds0172/Desktop/PyBamm-Embedded-GP-main/Embeddded-GPs/src/Data/modEpscorData.csv')
-# full_charge_discharge = pd.read_csv('/home/WVU-AD/ds0172/Desktop/PyBamm-Embedded-GP-main/Embeddded-GPs/src/Data/EPSCoR_CC - 024.csv.csv')
+# C = pd.read_csv('/home/WVU-AD/ds0172/Desktop/PyBamm-Embedded-GP-main/src-non-jax/src/Data/ChargeCycle.csv', header=None)
+# D = pd.read_csv('/home/WVU-AD/ds0172/Desktop/PyBamm-Embedded-GP-main/src-non-jax/src/Data/DischargeCycle.csv', header=None)
+testing = pd.read_csv('/home/WVU-AD/ds0172/Desktop/PyBamm-Embedded-GP-main/src-non-jax/src/Data/modEpscorData.csv')
+# full_charge_discharge = pd.read_csv('/home/WVU-AD/ds0172/Desktop/PyBamm-Embedded-GP-main/src-non-jax/src/Data/EPSCoR_CC - 024.csv.csv')
 from src.embedded_gp.create_OCV import create_OCV_full_cell, V_to_pos_half, V_to_neg_half
 
 
 
-# filename = '/home/WVU-AD/ds0172/Desktop/PyBamm-Embedded-GP-main/Embeddded-GPs/src/Data/EPSCoR_Char_B4 - 024.csv'
+# filename = '/home/WVU-AD/ds0172/Desktop/PyBamm-Embedded-GP-main/src-non-jax/src/Data/EPSCoR_Char_B4 - 024.csv'
 # i_D_start = 6419
 # i_D_end = 51115
 #
@@ -62,13 +58,12 @@ from src.embedded_gp.create_OCV import create_OCV_full_cell, V_to_pos_half, V_to
 #
 # param1['Positive electrode OCP [V]'] = neg_ocp
 # # Volt_charge = full_charge_discharge['Volts'].to_numpy()
-i_end = 4365
 
-Volt = testing['Volts'].to_numpy()[820:i_end]
-Amps = testing['Amps'].to_numpy()[820:i_end]
-Amps[2464:] = -Amps[2464:]
-time = testing['TestTime'].to_numpy()[820:i_end]
-Temp = testing['Temp 2'].to_numpy()[820:i_end]
+
+Volt = testing['Volts'].to_numpy()[820:2683]
+Amps = testing['Amps'].to_numpy()[820:2683]
+time = testing['TestTime'].to_numpy()[820:2683]
+Temp = testing['Temp 2'].to_numpy()[820:2683]
 
 testing = []
 
@@ -115,42 +110,6 @@ model.inputs = np.transpose(np.array([t]))
 model.phis = phis
 model.data = np.transpose(Volt)
 
-
-from src.embedded_gp.create_OCV import create_OCV_full_cell, V_to_pos_half
-import matplotlib.pyplot as plt
-import pybamm as pb
-import numpy as np
-
-# param = pb.ParameterValues("Mohtat2020")
-
-# filename = '/home/WVU-AD/ds0172/Desktop/PyBamm-Embedded-GP-main/Embeddded-GPs/src/Data/EPSCoR_Char_B4 - 024.csv'
-# i_D_start = 6419
-# i_D_end = 51115
-#
-# SOC, Volt_ocv = create_OCV_full_cell(filename, i_D_start, i_D_end, 2.500*3600)
-# Volt_pos_half = V_to_pos_half(SOC, Volt_ocv)
-#
-# stos = np.linspace(0,1,1000)
-#
-# param_pocp = param['Negative electrode OCP [V]'](stos)
-# param_nocp = param['Positive electrode OCP [V]'](stos[::-1])
-#
-# param_ocp = param_nocp - param_pocp
-# vp = []
-# for sto in stos:
-#     vp.append(Volt_pos_half(sto).evaluate()[0][0])
-#
-# data_ocp = vp - param_pocp
-#
-# plt.plot(stos, data_ocp, label='data pos')
-# plt.plot(stos, param_ocp, label='Positive')
-# plt.plot(stos, param_nocp, label = 'negative')
-# plt.legend()
-# plt.show()
-
-from src.LFP import LFP_OCP
-
-# param1['Positive electrode OCP [V]'] = LFP_OCP
 
 
 # minI = -4.0304
@@ -203,36 +162,39 @@ from src.LFP import LFP_OCP
 #         "Discharge at 4A for 10 seconds", "Rest at 0 A for 10 seconds"
 #     ] * 168
 # )
-plt.plot(t,Amps)
-plt.show()
+
 
 current_interpolant = pybamm.Interpolant(t, Amps, pybamm.t)#, interpolator="JAX")  # , _num_derivatives=0)
 param1["Current function [A]"] = current_interpolant
 # param1["Positive electrode OCP [V]"] = polyfit_ocv
+# param1["Electrode width [m]"] = 0.25
 # param1["Negative electrode porosity"] = 0.5
 # param1["Negative electrode OCP [V]"] = 0
-param1["Open-circuit voltage at 0% SOC [V]"] = 0
-param1["Open-circuit voltage at 100% SOC [V]"] = 4.2
+# param1["Open-circuit voltage at 0% SOC [V]"] = 0
+# param1["Open-circuit voltage at 100% SOC [V]"] = 4.31
 # param1["Initial concentration in positive electrode [mol.m-3]"] = 25000
-
-#
-# param1["Lower voltage cut-off [V]"] = 2.5
-# param1["Upper voltage cut-off [V]"] = 4.2
-# # param1["Contact resistance [Ohm]"] = 0.156
-# param1["Open-circuit voltage at 0% SOC [V]"] = 2.5
-# param1["Open-circuit voltage at 100% SOC [V]"] = Volt[0]
-
-
-solver = pybamm.IDAKLUSolver(atol=1e-2, rtol=1e-2)
+param1['Nominal cell capacity [A.h]'] = 2.5
+param1["Lower voltage cut-off [V]"] = 2.5
+param1["Upper voltage cut-off [V]"] = 4.2
+# param1["Contact resistance [Ohm]"] = 0.156
+param1["Open-circuit voltage at 0% SOC [V]"] = 2.5
+param1["Open-circuit voltage at 100% SOC [V]"] = Volt[0]
 
 
+solver = pybamm.IDAKLUSolver(atol=1e-2, rtol=1e-4)
+
+num_betas=12
+
+for i in range(num_betas):
+    beta_str = "Beta" + str(i)
+    param1.update({beta_str: "[input]"},check_already_exists=False)
     # input_dict.update({beta_str: bm[0][i]})
 # param1.update({"mtx": mtx[0:8]},check_already_exists=False)
 
 
 #
 # param1["Positive electrode exchange-current density [A.m-2]"] = 1
-# param1["Negative electrode exchange-curre-8.346150877549220240e+03nt density [A.m-2]"] = 2
+# param1["Negative electrode exchange-current density [A.m-2]"] = 2
 # param1["Positive particle diffusivity [m2.s-1]"] = 12e-4
 # param1["Negative particle diffusivity [m2.s-1]"] = 2e-5
 # param1["Current function [A]"] = current_interpolant
@@ -240,27 +202,12 @@ solver = pybamm.IDAKLUSolver(atol=1e-2, rtol=1e-2)
 #
 # # param1["Initial concentration in positive electrode [mol.m-3]"] = 47513.0 * 0.58
 sim = pybamm.Simulation(batmodel,parameter_values=param1, solver=solver)
+
 solution = sim.solve(t, initial_soc=1, t_interp=t)
-solution.plot()
-# solution = sim.solve(t, initial_soc=1, t_interp=t)
-# Vpbi = solution['Voltage [V]'].entries
-# plt.plot(t, Vpbi)
-# plt.plot(t, Volt)
-# plt.show()
-
-# param2 = pybamm.ParameterValues("Mohtat2020")
-# stos = np.linspace(0,1,1000)
-# lfp = []
-# default = []
-# for sto in stos:
-#     lfp.append(param1['Positive electrode OCP [V]'](pybamm.Scalar(sto)).evaluate())
-#     default.append(param2['Positive electrode OCP [V]'](sto))
-#
-# plt.plot(stos, lfp, label = 'LFP')
-# plt.plot(stos, default, label = 'Default')
-# plt.legend()
-# plt.plot()
-
+Vpbi = solution['Voltage [V]'].entries
+plt.plot(t, Vpbi)
+plt.plot(t, Volt)
+plt.show()
 model.solution = None
 model.tt = 0
 c = solution['Negative particle surface concentration [mol.m-3]'].entries[0]
@@ -269,74 +216,35 @@ j0n_i = solution['Negative electrode exchange current density [A.m-2]'].entries[
 Dp_i = np.mean(solution["Positive particle effective diffusivity [m2.s-1]"].entries[0][0])
 Dn_i = np.mean(solution["Negative particle effective diffusivity [m2.s-1]"].entries[0][0])
 
-# beta0 = np.array([2.2,0,0,0.47,0,0, np.log(Dp_i),0, 0,np.log(Dn_i),0, 0,0.4])
+beta0 = np.array([2.2,0,0,0.47,0,0, np.log(Dp_i),0, 0,np.log(Dn_i),0, 0,0.4])
 # beta0 = np.array([2.2,1e-5,1e-5, 0.47,1e-5,1e-5, 0.4])
-# beta0 = np.array([2.2,0.47,np.log(Dp_i),np.log(Dn_i),0.4])
-# beta0 = np.array([2.2,0, 0.4,0, -32, -32, 0.4])#, -3.069504657677171267e+01, 1.554412011549055350e+00, 4.000000000000000222e-01])
-samples = np.loadtxt("/home/WVU-AD/ds0172/Desktop/PyBamm-Embedded-GP-main/Embeddded-GPs/src/Data/samples_j0_10_14.csv")
-input_dict_init = {}
-# beta0 = np.array([2.2,0,0, 0.4,0,0,-32,0,0, 0.4])
-
-# DP = np.mean(samples[:,4][-200:])
-DP = -35
-# beta0 = np.array([DP, 0, 0,DP,0,0, 2.2,0,0,0.4,0,0, 0.4 ])
-# beta0 = np.array([DP, DP, 2.2, 0.4, 0.4])
-# beta0 = np.array(samples[-1,:])
-beta0 = np.array([11,0, 14,0, -24.04,0, -31.04,0, 0.12**2])
-num_betas=len(beta0)
-
-
-
-for i in range(num_betas):
-    beta_str = "Beta" + str(i)
-    param1.update({beta_str: "[input]"},check_already_exists=False)
-    input_dict_init[beta_str] = beta0[i]
-
-
-
-# for i in range(num_betas):
-#     beta_i = samples[:,i]
-#     l = "Beta" + str(i)
-#     plt.plot(beta_i, label = l)
-#     if i < 4:
-#         input_dict_init.update({l:np.mean(beta_i[-100])})
-#     if i == 4:
-#         input_dict_init.update({"Positive particle diffusivity [m2.s-1]":np.exp(np.mean(beta_i[-100]))})
-#     if i == 5:
-#         input_dict_init.update({"Negative particle diffusivity [m2.s-1]":np.exp(np.mean(beta_i[-100]))})
-
-    # plt.title(l)
-    # plt.show()
-# plt.show()
-
-
-mtx = param1.update({'mtx':[[1]]},check_already_exists=False)
+mtx = param1.update({'mtx':[[1],[2]]},check_already_exists=False)
 
 def j0p(c_e, c_s_surf, c_s_max, T):
     # This evaluation cannot currently be used in JAX until PyBamm Interpolation can be used in JAX Solver
     betas = []
-    for i in range(0,2):
+    for i in range(3):
         beta_str_i = "Beta" + str(i)
         betas.append(param1[beta_str_i])
     mtx = param1["mtx"]
-    res = evaluate_pybamm(betas, mtx,  [c_s_surf/c_s_max])
+    res = abs(evaluate_pybamm(betas, mtx,  [param1['Current function [A]']]))
     return res
 
 
 def j0n(c_e, c_s_surf, c_s_max, T):
     betas = []
-    for i in range(2,4):
+    for i in range(3, 6):
         beta_str_i = "Beta" + str(i)
         betas.append(param1[beta_str_i])
     mtx = param1["mtx"]
-    res = evaluate_pybamm(betas, mtx,[c_s_surf/c_s_max])
+    res = abs(evaluate_pybamm(betas, mtx,[param1['Current function [A]']]))
     return res
 
 
 def U1(sto, T):
-
+    # This evaluation cannot currently be used in JAX until PyBamm Interpolation can be used in JAX Solver
     betas = []
-    for i in range(4, 6):
+    for i in range(6, 9):
         beta_str_i = "Beta" + str(i)
         betas.append(param1[beta_str_i])
     mtx = param1["mtx"]
@@ -346,7 +254,7 @@ def U1(sto, T):
 
 def U2(sto, T):
     betas = []
-    for i in range(6,8):
+    for i in range(9, 12):
         beta_str_i = "Beta" + str(i)
         betas.append(param1[beta_str_i])
     mtx = param1["mtx"]
@@ -356,33 +264,12 @@ def U2(sto, T):
     # def U3(sto):
     #     res = evaluate_pybamm(betas_list[4], mtx, [sto], phis)
     #     return res
-#
-#
-# param1["Positive electrode exchange-current density [A.m-2]"] = j0p
-# param1["Negative electrode exchange-current density [A.m-2]"] = j0n
-# param1["Positive particle diffusivity [m2.s-1]"] = U1
-# param1["Negative particle diffusivity [m2.s-1]"] = U2
 
-# param1["Positive electrode exchange-current density [A.m-2]"] = j0p
-# param1["Negative electrode exchange-current density [A.m-2]"] = j0n
-# param1["Positive particle diffusivity [m2.s-1]"] = U2
-# param1["Negative particle diffusivity [m2.s-1]"] = U1
+
 param1["Positive electrode exchange-current density [A.m-2]"] = j0p
 param1["Negative electrode exchange-current density [A.m-2]"] = j0n
 param1["Positive particle diffusivity [m2.s-1]"] = U1
 param1["Negative particle diffusivity [m2.s-1]"] = U2
-
-
-var_list = ["Negative particle diffusivity [m2.s-1]"]
-
-sim = pybamm.Simulation(batmodel,parameter_values=param1, solver=solver)
-
-solution = sim.solve(t, initial_soc=1, t_interp=t, inputs = input_dict_init)
-Vpbi = solution['Voltage [V]'].entries
-plt.plot(t, Vpbi)
-plt.plot(t, Volt)
-plt.show()
-
 
 # t = np.linspace(0,1787,1787)
 def equation(betas_list, mtx, d=True):
@@ -396,71 +283,30 @@ def equation(betas_list, mtx, d=True):
             beta_str_in = 'Beta' + str(ii)
             input_dict.update({beta_str_in: beta})
             ii+=1
-    # for i, var in enumerate(var_list):
-    #     input_dict.update({var: np.exp(betas_list[i+2][0])})
-    #
-    ttstart = timeit.default_timer()
 
-    # sim = pybamm.Simulation(batmodel, parameter_values=param1, solver=solver)
+
+    sim = pybamm.Simulation(batmodel, parameter_values=param1, solver=solver)
 
     solution = sim.solve(t, initial_soc=1, inputs=input_dict, calculate_sensitivities=d, t_interp=t)
     # tt1 = timeit.default_timer()
     Vpb = solution["Voltage [V]"].entries
-    # Vpb[5474] = 0
-    # Vpb[5475] = 0
 
     c = np.min(solution['Negative particle surface concentration [mol.m-3]'].entries)
-    # j0p_i = np.min(solution['Positive electrode exchange current density [A.m-2]'].entries)
-    # j0n_i = np.min(solution['Negative electrode exchange current density [A.m-2]'].entries)
+    j0p_i = np.min(solution['Positive electrode exchange current density [A.m-2]'].entries)
+    j0n_i = np.min(solution['Negative electrode exchange current density [A.m-2]'].entries)
     Dp_i = np.min(solution["Positive particle effective diffusivity [m2.s-1]"].entries)
-    # Dn_i = np.min(solution["Negative particle effective diffusivity [m2.s-1]"].entries)
-    #
-    # j0p_i = np.max(solution['Positive electrode exchange current density [A.m-2]'].entries)
-    # j0n_i = np.max(solution['Negative electrode exchange current density [A.m-2]'].entries)
-    Dp_i_max = np.max(solution["Positive particle effective diffusivity [m2.s-1]"].entries)
-    # Dn_i = np.max(solution["Negative particle effective diffusivity [m2.s-1]"].entries)
+    Dn_i = np.min(solution["Negative particle effective diffusivity [m2.s-1]"].entries)
 
-    mins = [c,Dp_i_max,Dp_i]
+    mins = [c,j0p_i,j0n_i,Dp_i,Dn_i]
 
     if any(m < 0 for m in mins):
         neg_vars = True
-    # if i < 3:
-    #     var = 'Positive electrode exchange current density [A.m-2]'
-    # if i >= 3 and i < 6:
-    #     var = 'Negative electrode exchange current density [A.m-2]'
-    # if i >= 6:
-    #     var = 'Negative particle effective diffusivity [m2.s-1]'
+
     if d:
         sens = []
         for beta in range(len(beta0)-1):
             beta_str_sens = 'Beta' + str(beta)
-            # if beta < 3:
-            #     var = 'Positive electrode exchange current density [A.m-2]'
-            # if beta >= 3 and beta < 6:
-            #     var = 'Negative electrode exchange current density [A.m-2]'
-            # if beta >= 6:
-            #     var = 'Negative particle effective diffusivity [m2.s-1]'
-            # if beta < 3:
-            #     dresdfunc = np.log(solution['Voltage [V]'].sensitivities[beta_str_sens])
-            dresdfunc = solution['Voltage [V]'].sensitivities[beta_str_sens]
-            if beta > 3:
-                dresdfunc = dresdfunc*np.exp(input_dict[beta_str_sens])
-            dresdfunc[-1] = 0
-            # dfuncdbeta = solution[var].sensitivities[beta_str_sens]
-            sens.append(dresdfunc)
-
-
-        tt2 = timeit.default_timer() - ttstart
-        print(f"{tt2} to solve + grad")
-        # for i, var in enumerate(var_list):
-        #     if var == "Positive particle diffusivity [m2.s-1]":
-        #         sens.append(solution['Voltage [V]'].sensitivities[var]*solution["Positive particle effective diffusivity [m2.s-1]"].entries[0][0])
-        #     elif var == "Negative particle diffusivity [m2.s-1]":
-        #         sens.append(solution['Voltage [V]'].sensitivities[var] *
-        #                     solution["Negative particle effective diffusivity [m2.s-1]"].entries[0][0])
-        #     else:
-        #         sens.append(solution['Voltage [V]'].sensitivities[var])
-
+            sens.append(solution['Voltage [V]'].sensitivities[beta_str_sens])
     # ttint = timeit.default_timer() - tt1
     # print(f"no interp:{ttint}")
 
@@ -469,7 +315,6 @@ def equation(betas_list, mtx, d=True):
     if not d:
         plt.plot(t[0:n],Vpb,label='Pybamm')
         plt.plot(t,Volt,label='Experimental')
-        plt.title(f"{model.draw}")
         plt.xlabel('Time')
         plt.ylabel('Voltage')
         plt.legend()
@@ -501,11 +346,10 @@ model.set_equation(equation)
 # beta0 = np.array(
 #     [-5.59750181, -1.70157791, -4.52797968, 2.05051943, -4.81077465, -1.82435794, -7.61931092, 2.71472927, 0.3])
 
-samples, matrix, BIC = model.full_routine(draws=2000, init_betas=beta0, tolerance=0)
+samples, matrix, BIC = model.full_routine(draws=1500, init_betas=beta0, tolerance=0)
 
-np.savetxt('src/Data/samples_j0_10_14.csv', samples)
-np.savetxt('results/matrix_10_14.csv', matrix)
-np.savetxt('results/BIC_10_14.csv', BIC)
+np.savetxt('src/Data/samples_j0_9_16.csv', samples)
+np.savetxt('matrix.csv', matrix)
 
 bj0p = samples[0:1, -1]
 bj0n = samples[2:3, -1]

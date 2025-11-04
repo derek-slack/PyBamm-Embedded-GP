@@ -3,6 +3,9 @@ import numpy as np
 from new_eval import evaluate_pybamm, evaluate_pybamm_bernoulli
 
 class ParamUpdate():
+    """
+    Class for modifying Parameter dictionary in PyBaMM
+    """
     def __init__(self, params, beta0, mtx, kernel = 'Bernoulli'):
         self.params = params
         self.beta_list = beta0[:-1]
@@ -16,6 +19,17 @@ class ParamUpdate():
             raise NotImplementedError('kernel must be either "Bernoulli" or "Cubic"')
 
     def add_function(self, name, arg_inds, list_index,exp=False, div_arg=None):
+        """
+        Creates Parameter function specified as a GP object
+        inputs:
+            name: str, Name of parameter to be estimated
+            arg_inds: list of int, Index of inputs to parameter function from PyBaMM
+            list_index: int, Index of function hyperparameters, betas and mtx, supplied in initialization
+            exp: Bool, if function should be exponential
+            div_arg: list of lists of int, optional, Index of arguments to be used as div
+                ex: div_arg = [[1,4],[3,2]]
+                inputs to GP would be GP((1/2),(3,2))
+        """
         beta_func = self.beta_inputs[list_index]
         mtx = self.mtx[list_index]
         if div_arg is not None:
