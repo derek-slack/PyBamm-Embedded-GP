@@ -6,9 +6,9 @@ from new_eval import *
 import FoKL
 from FoKL import FoKLRoutines
 model = pybamm.lithium_ion.SPM()
-solver = pybamm.AlgebraicSolver(output_variables=['Voltage [V]'])
+solver = pybamm.IDAKLUSolver()
 
-DN_model = FoKL.FoKLRoutines.load("../models/DN_model.fokl")
+DN_model = FoKL.FoKLRoutines.load("/Users/derekslack/Pybamm-Embedded-GP-live/src/models/DN_model.fokl")
 betas = DN_model.betas
 mtx = DN_model.mtx
 bm = np.mean(betas, axis=0).reshape(1, -1)

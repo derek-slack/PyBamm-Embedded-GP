@@ -1,5 +1,5 @@
 import os
-
+import timeit
 import pybamm
 from src.embedded_gp.new_eval import *
 import os
@@ -32,8 +32,8 @@ for i in range(num_betas):
     param_jax.update({beta_str: "[input]"}, check_already_exists=False)
     input_dict[beta_str] = beta0[i]
 
-param_jax.update({'mtx':[[1],[2]]}, check_already_exists=False)
-param_idak.update({'mtx':[[1],[2]]}, check_already_exists=False)
+param_jax.update({'mtx':np.array([[1],[2]])}, check_already_exists=False)
+param_idak.update({'mtx':np.array([[1],[2]])}, check_already_exists=False)
 
 
 def U1_jax(sto, T):
@@ -62,7 +62,7 @@ def current_func(time):
 param_jax["Current function [A]"] = current_func
 param_idak["Current function [A]"] = current_func
 param_jax["Positive particle diffusivity [m2.s-1]"] = U1_jax
-param_idak["Positive particle diffusivity [m2.s-1]"] = U1_jax
+param_idak["Positive particle diffusivity [m2.s-1]"] = U1_idak
 t_eval = np.linspace(0,3600,500)
 output_variables = ["Voltage [V]"]
 
@@ -108,18 +108,18 @@ idak_map = jax.vmap(get_voltage_idak)
 for i in range(100):
     ti = timeit.default_timer()
     input_dict.update({"Beta0": beta0[0]+np.random.normal(0,1e-2,size=1)[0]})
-    # sol_np = jax_solver(input_dict)
-    # sol = pybamm.Solution(t_eval, sol_np, model_idak, input_dict)
-    # V_jax = sol["Voltage [V]"].entries[25]
-    # tie = timeit.default_timer() - ti
-    # # print(f"Solving jax took {tie} seconds")
-    # t_old = timeit.default_timer()
-    # # solution = sim.solve(t_eval, initial_soc=1, inputs=input_dict, calculate_sensitivities=False)
-    # solution = f(t_eval, input_dict)
-    # V_old = solution[25]
-    # t_old_end = timeit.default_timer() - t_old
-    # print(f"IDAKLUSolver: {t_old_end}, JAX solver: {tie}")
-    # print(f"Old method: {V_old}, JAX method: {V_jax}")
+    sol_np = jax_solver(input_dict)
+    sol = pybamm.Solution(t_eval, sol_np, model_idak, input_dict)
+    V_jax = sol["Voltage [V]"].entries[25]
+    tie = timeit.default_timer() - ti
+    # print(f"Solving jax took {tie} seconds")
+    t_old = timeit.default_timer()
+    # solution = sim.solve(t_eval, initial_soc=1, inputs=input_dict, calculate_sensitivities=False)
+    solution = f(t_eval, input_dict)
+    V_old = solution[25]
+    t_old_end = timeit.default_timer() - t_old
+    print(f"IDAKLUSolver: {t_old_end}, JAX solver: {tie}")
+    print(f"Old method: {V_old}, JAX method: {V_jax}")
     i_d.append(input_dict.copy())
 tt2 = timeit.default_timer() - tt1
 print(tt2)
