@@ -8,7 +8,7 @@ class ParamUpdate():
     """
     def __init__(self, params, beta0, mtx, kernel = 'Bernoulli'):
         self.params = params
-        self.beta_list = beta0[:-1]
+        self.beta_list = beta0
         self.beta_inputs = self._to_input_params(self.beta_list)
         self.mtx = mtx
         if kernel == 'Bernoulli':
@@ -18,7 +18,7 @@ class ParamUpdate():
         else:
             raise NotImplementedError('kernel must be either "Bernoulli" or "Cubic"')
 
-    def add_function(self, name, arg_inds, list_index,exp=False, div_arg=None):
+    def add_function(self, name, arg_inds, list_index,exp=False, div_arg=None, new_children = None):
         """
         Creates Parameter function specified as a GP object
         inputs:
@@ -30,6 +30,14 @@ class ParamUpdate():
                 ex: div_arg = [[1,4],[3,2]]
                 inputs to GP would be GP((1/2),(3,2))
         """
+
+        def process_tree(symbol: pybamm.Symbol):
+            if isinstance(symbol, pybamm.Parameter) and symbol.name == "My Parameter":
+                return symbol
+            else:
+                new_children = [process_tree(child) for child in symbol.children]
+                return symbol.create_copy(new_children)
+
         beta_func = self.beta_inputs[list_index]
         mtx = self.mtx[list_index]
         if div_arg is not None:

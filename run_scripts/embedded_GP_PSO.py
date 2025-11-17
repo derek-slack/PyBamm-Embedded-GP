@@ -1,4 +1,5 @@
 import os
+import timeit
 
 from src.embedded_gp.post_process import PostProcess
 
@@ -6,6 +7,9 @@ os.environ['JAX_PLATFORM_NAME'] = 'cpu'
 import pybamm
 import pybamm as pb
 import numpy as np
+import jax
+import jax.numpy as jnp
+
 
 from src.embedded_gp import Experimental_Embedded_GPs
 
@@ -24,8 +28,7 @@ warnings.filterwarnings("ignore")
 k = "symmetric Butler-Volmer"
 pb.set_logging_level("NOTICE")
 
-# batmodel.events = []
-# batmodel.convert_to_format = 'jax'
+
 
 save_folder = "figures"
 os.makedirs(save_folder, exist_ok=True)
@@ -107,7 +110,7 @@ plt.plot(t,Amps)
 plt.show()
 
 current_interpolant = pybamm.Interpolant(t, Amps, pybamm.t)#, interpolator="JAX")  # , _num_derivatives=0)
-param1["Current function [A]"] = current_interpolant
+param1["Current function [A]"] = 1.25
 
 
 # samples = np.loadtxt("/home/WVU-AD/ds0172/Desktop/PyBamm-Embedded-GP-main/src-non-jax/src/Data/samples_j0_10_14.csv")
@@ -118,7 +121,7 @@ DP = -35
 # beta0 = np.array([DP, 0, 0,DP,0,0, 2.2,0,0,0.4,0,0, 0.4 ])
 # beta0 = np.array([DP, DP, 2.2, 0.4, 0.4])
 # beta0 = np.array(samples[-1,:])
-beta0 = [[np.log(11),0], [np.log(14),0], [-24.04,0], [-31.04,0], [0.12**2]]
+beta0 = [[np.log(11),0], [np.log(14),0], [-24.04,0], [-31.04,0]]
 num_betas=len(beta0)
 #
 from src.embedded_gp import Create_Params
@@ -157,15 +160,19 @@ var_pts = {var.x_n: 20, var.x_s: 20, var.x_p: 20, var.r_n: 10, var.r_p: 10}
 mesh = pybamm.Mesh(geometry, batmodel.default_submesh_types, var_pts)
 disc = pybamm.Discretisation(mesh, batmodel.default_spatial_methods)
 disc.process_model(batmodel)
-output_variables = ["Voltage [V]"]
-j0 = batmodel.variables['Positive electrode exchange current density [A.m-2]']
-j0.visualise('j0.png')
+# output_variables = ["Voltage [V]"]
+# j0 = batmodel.variables['Positive electrode exchange current density [A.m-2]']
+# j0.visualise('j0.png')
 
-solver = pybamm.IDAKLUSolver(atol=1e-2, output_variables=output_variables)
-sim = pybamm.Simulation(batmodel, parameter_values=param1, solver=solver)
-sim.solve(t ,inputs=input_dict_init)
-idak_jax = solver.jaxify(batmodel, t)
-jax_solver = idak_jax.get_jaxpr()
+# solver = pybamm.IDAKLUSolver(atol=1e-2, rtol=1e-2, output_variables=output_variables, options={'num_threads':os.cpu_count()})
+# sim = pybamm.Simulation(batmodel, parameter_values=param1, solver=solver)
+# sim.solve(t ,inputs=input_dict_init)
+solver = pybamm.JaxSolver(atol=1e-4, rtol=1e-4)
+solve1 = solver.solve(batmodel, t, inputs = input_dict_init)
+jax_solver = solver.create_solve(batmodel, t)
+
+# idak_jax = solver.jaxify(batmodel, t)
+# # jax_solver = idak_jax.get_jaxpr()
 # solve1 = solver.solve(batmodel, t, inputs = input_dict_init)
 # jax_solver = solver.create_solve(batmodel, t)
 
@@ -195,16 +202,54 @@ from src.embedded_gp import post_process
 # plt.show()
 
 
-def equation(input_dict, mtx, model_t, d=True):
-    V = jax_solver(t, input_dict)
+def equation(input_dict):
+    t_start = timeit.default_timer()
+    sol = jax_solver(t,t_interp=t, inputs=input_dict)
+    t_end = timeit.default_timer() - t_start
+    print(f'Time to solve all: {t_end}')
+    V = []
+    if isinstance(sol, list):
+        for s in sol:
+            V.append(s['Voltage [V]'].entries)
+    else:
+        V = sol['Voltage [V]'].entries
     return V
 
+def MSE(input_dict):
+    error = Volt - equation(input_dict)
+    if len(error) == len(Volt):
+        res = np.sum(error ** 2) / len(Volt)
+    else:
+        res = np.sum(error**2, axis=1)/len(Volt)
+    return res
 
-model.set_equation(equation)
+jax_evaluator = pybamm.EvaluatorJax(batmodel.variables['Voltage [V]'])
+V_func = jax.vmap(jax_evaluator.__call__,in_axes=(None,1, None),out_axes=0)
 
-samples, matrix, BIC = model.full_routine(draws=2000, init_betas=beta0, tolerance=0)
+def equation_jax(input_dict):
 
-np.savetxt('../results/samples_j0_10_30.csv', samples)
-np.savetxt('../results/matrix_10_30.csv', matrix)
-np.savetxt('../results/BIC_10_30.csv', BIC)
+    t_start = timeit.default_timer()
+    y = jax_solver(input_dict)
+    t_end = timeit.default_timer() - t_start
+    print(f'Time to solve all: {t_end}')
+    V = V_func(t, y, input_dict)
+    return V
 
+def MSE_jax(input_dict):
+    error = Volt - equation_jax(input_dict).reshape(1,-1)
+    res = jnp.sum(error ** 2) / len(Volt)
+    return res
+
+
+from PSO import ParticleSwarmOptimizer
+PSO_Py = ParticleSwarmOptimizer(n_particles=os.cpu_count()*2, n_iterations=100, objective_function=MSE_jax, bounds={'Beta00':(-5,2),'Beta01':(-25,25),'Beta10':(-5,2),'Beta11':(-25,25),'Beta20':(-35,0),'Beta21':(-25,25),'Beta30':(-35,0),'Beta31':(-25,25)}, initial_params=input_dict_init)
+best_params, list_best = PSO_Py.optimize(MSE_jax)
+h=1
+# model.set_equation(equation)
+#
+# samples, matrix, BIC = model.full_routine(draws=2000, init_betas=beta0, tolerance=0)
+
+# np.savetxt('../results/samples_j0_10_30.csv', samples)
+# np.savetxt('../results/matrix_10_30.csv', matrix)
+# np.savetxt('../results/BIC_10_30.csv', BIC)
+#

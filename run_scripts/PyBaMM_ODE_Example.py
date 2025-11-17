@@ -5,7 +5,9 @@ import numpy as np
 
 import pybamm
 
-from embedded_gp import Experimental_Embedded_GPs
+# Import default version of the FoKL package
+import FoKL
+from FoKL import Experimental_Embedded_GPs
 
 from embedded_gp.new_eval import evaluate_pybamm
 

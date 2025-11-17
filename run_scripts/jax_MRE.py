@@ -6,7 +6,7 @@ import os
 
 from post_process import PostProcess
 
-os.environ['JAX_PLATFORM_NAME'] = 'gpu'
+os.environ['JAX_PLATFORM_NAME'] = 'cpu'
 import jax
 model_jax = pybamm.lithium_ion.SPMe()
 model_jax.convert_to_format = 'jax'
@@ -92,26 +92,31 @@ Idak_solver_new = pybamm.IDAKLUSolver(atol=1e-4, rtol=1e-4, output_variables=out
 IJ = Idak_solver.jaxify(model_idak,t_eval)
 f = IJ.get_jaxpr()
 sim = pybamm.Simulation(model_idak,parameter_values=param_idak, solver=Idak_solver_new)
-sol_base = sim.solve(t_eval,inputs=input_dict)
+sol_base = sim.solve(t_eval,inputs=input_dict, t_interp=t_eval)
 
 # Create 'Data' for rmse
-data = sol_base['Voltage [V]'].entries
-data_noise = data + np.random.normal(0,1e-2,size=len(data))
+data_premade = sol_base['Voltage [V]'].entries
+data_noise = data_premade + np.random.normal(0,1e-2,size=len(data_premade))
+
+jax_evaluator = pybamm.EvaluatorJax(model_jax.variables['Voltage [V]'])
+
 
 def get_voltage_jax(input_dict):
     ins = {"Beta0": input_dict['Beta0'], 'Beta1': input_dict['Beta1'], 'Beta2': input_dict['Beta2']}
     ys = jax_solver(ins)
-    sol = pybamm.Solution(all_ts=t_eval,all_ys=ys, all_inputs = ins, all_models=model_jax)
-    V = sol['Voltage [V]'].entries
+    V = jax.vmap(jax_evaluator.__call__,in_axes=(None,1),out_axes=0)(t_eval,ys)
     return V
 
 def rmse_jax(input_dict, data):
     V = get_voltage_jax(input_dict)
-    rmse = jnp.sqrt(((V - data)**2)/len(data))
+    V = V.reshape(-1,1)
+    data = data.reshape(-1,1)
+    rmse = jnp.sqrt(jnp.sum((V - data)**2)/len(data))
     return rmse
 
 # Get Value and Gradient of Inputs
-jax_val_and_grad = jax.value_and_grad(rmse_jax)
-val, grad = jax_val_and_grad(input_dict, data_noise)
+jax_grad = jax.grad(rmse_jax, argnums=0)
+grad = jax_grad(input_dict, data_noise)
+h=1
 
 
