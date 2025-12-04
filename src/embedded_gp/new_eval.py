@@ -117,38 +117,40 @@ def evaluate_pybamm_bernoulli(betas, mtx, inputs):
     returns:
         mean: result of GP evaluation
     """
+    if mtx.shape[0] == 0:
+        return betas[0]
+    else:
+        n = jnp.shape(inputs)[0]  # Size of normalized inputs
+        num_basis_terms = len(mtx)
+        num_inputs = len(mtx[0])
+        X_sol = []
 
-    n = jnp.shape(inputs)[0]  # Size of normalized inputs
-    num_basis_terms = len(mtx)
-    num_inputs = len(mtx[0])
-    X_sol = []
 
+        mtx = jnp.array(mtx)
 
-    mtx = jnp.array(mtx)
+        def bernoulli_func(phis, num, x):
+            if num > 0:
+                coeff = phis[num-1]
+                result = coeff[0] + sum(coeff[k] * (x**k) for k in range(1,len(coeff)))
+            else:
+                result = 1.0
+            return result
 
-    def bernoulli_func(phis, num, x):
-        if num > 0:
-            coeff = phis[num-1]
-            result = coeff[0] + sum(coeff[k] * (x**k) for k in range(1,len(coeff)))
-        else:
-            result = 1.0
-        return result
+        for i in range(n):
+            for j in range(num_basis_terms):
+                phi = 1
+                for k in range(num_inputs):
+                    num = mtx[j][k]
+                    phi*= bernoulli_func(phis_bernoulli, num, inputs[i][k])
+                X_sol.append(phi)
 
-    for i in range(n):
-        for j in range(num_basis_terms):
-            phi = 1
-            for k in range(num_inputs):
-                num = mtx[j][k]
-                phi*= bernoulli_func(phis_bernoulli, num, inputs[i][k])
-            X_sol.append(phi)
+        X_sol_ones = betas[0]
+        mean = X_sol_ones
+        for i in range(len(X_sol)):
+            X_sol_betas = X_sol[i]*betas[i+1]
+            mean += X_sol_betas
 
-    X_sol_ones = betas[0]
-    mean = X_sol_ones
-    for i in range(len(X_sol)):
-        X_sol_betas = X_sol[i]*betas[i+1]
-        mean += X_sol_betas
-
-    return mean
+        return mean
 
 def evaluate_pybamm_test(betas, mtx, inputs, phis):
     """

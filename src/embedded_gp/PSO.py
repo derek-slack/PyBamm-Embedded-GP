@@ -102,7 +102,7 @@ class ParticleSwarmOptimizer:
             lower, upper = self.bounds[param_name]
             self.positions[:, i] = np.clip(self.positions[:, i], lower, upper)
     
-    def optimize(self, objective_function: callable([[dict[str, float]], float])) -> tuple[dict[str, float], float]:
+    def optimize(self, objective_function: callable([[dict[str, float]], float])) -> tuple[dict[str, float], float, dict[str, float]]:
         """
         Run PSO optimization.
         
@@ -114,18 +114,18 @@ class ParticleSwarmOptimizer:
             best_score: Best objective function value achieved
         """
         self.initialize_swarm()
-        # You need to specify which axis to map over for EACH dictionary entry:
-        in_axes_dict = {key: 0 for key in self.param_names}
-
-        jax_obj_fn = jax.vmap(objective_function, in_axes=(in_axes_dict,))
+        # # You need to specify which axis to map over for EACH dictionary entry:
+        # in_axes_dict = {key: 0 for key in self.param_names}
+        #
+        # jax_obj_fn = jax.vmap(objective_function, in_axes=(in_axes_dict,))
         for iteration in range(self.n_iterations):
             # Evaluate all particles
             # scores = np.zeros(self.n_particles)
             params_dict = []
-            # for p in range(self.n_particles):
-            #     params_dict.append(self.params_to_dict_jax(self.positions[p]))
-            params_dict = self.params_to_dict_jax(self.positions)
-            scores = jax_obj_fn(params_dict)
+            for p in range(self.n_particles):
+                params_dict.append(self.params_to_dict(self.positions[p]))
+            # params_dict = self.params_to_dict_jax(self.positions)
+            scores = objective_function(params_dict)
             
             # Update personal bests
             improved = scores < self.personal_best_scores
@@ -135,7 +135,7 @@ class ParticleSwarmOptimizer:
             # Update global best
             best_particle_idx = np.argmin(scores)
             if scores[best_particle_idx] < self.global_best_score:
-                self.global_best_score = scores[best_particle_idx]
+                self.global_best_score = float(scores[best_particle_idx])
                 self.global_best_position = self.positions[best_particle_idx].copy()
             
             # Store history
@@ -163,7 +163,8 @@ class ParticleSwarmOptimizer:
         
         # Return best parameters found
         best_params = self.params_to_dict(self.global_best_position)
-        return best_params, self.global_best_score
+        all_particle_params = [self.params_to_dict(self.positions[p]) for p in range(self.n_particles)]
+        return best_params, self.global_best_score, all_particle_params
     
     def plot_convergence(self):
         """Plot optimization convergence history."""

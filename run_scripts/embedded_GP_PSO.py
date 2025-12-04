@@ -160,19 +160,19 @@ var_pts = {var.x_n: 20, var.x_s: 20, var.x_p: 20, var.r_n: 10, var.r_p: 10}
 mesh = pybamm.Mesh(geometry, batmodel.default_submesh_types, var_pts)
 disc = pybamm.Discretisation(mesh, batmodel.default_spatial_methods)
 disc.process_model(batmodel)
-# output_variables = ["Voltage [V]"]
+output_variables = ["Voltage [V]"]
 # j0 = batmodel.variables['Positive electrode exchange current density [A.m-2]']
 # j0.visualise('j0.png')
 
-# solver = pybamm.IDAKLUSolver(atol=1e-2, rtol=1e-2, output_variables=output_variables, options={'num_threads':os.cpu_count()})
-# sim = pybamm.Simulation(batmodel, parameter_values=param1, solver=solver)
+solver = pybamm.IDAKLUSolver(atol=1e-2, rtol=1e-2, output_variables=output_variables, options={'num_threads':os.cpu_count()})
+sim = pybamm.Simulation(batmodel, parameter_values=param1, solver=solver)
 # sim.solve(t ,inputs=input_dict_init)
-solver = pybamm.JaxSolver(atol=1e-4, rtol=1e-4)
-solve1 = solver.solve(batmodel, t, inputs = input_dict_init)
-jax_solver = solver.create_solve(batmodel, t)
+# solver = pybamm.IDAKLUSolver(atol=1e-4, rtol=1e-4, output_variables=output_variables)
+# solve1 = solver.solve(batmodel, t, inputs = input_dict_init)
+# jax_solver = solver.create_solve(batmodel, t)
 
-# idak_jax = solver.jaxify(batmodel, t)
-# # jax_solver = idak_jax.get_jaxpr()
+idak_jax = solver.jaxify(batmodel, t)
+jax_solver = idak_jax.get_jaxpr()
 # solve1 = solver.solve(batmodel, t, inputs = input_dict_init)
 # jax_solver = solver.create_solve(batmodel, t)
 
@@ -204,7 +204,7 @@ from src.embedded_gp import post_process
 
 def equation(input_dict):
     t_start = timeit.default_timer()
-    sol = jax_solver(t,t_interp=t, inputs=input_dict)
+    sol = sim.solve(t, t_interp = t, inputs=input_dict)
     t_end = timeit.default_timer() - t_start
     print(f'Time to solve all: {t_end}')
     V = []
@@ -229,7 +229,7 @@ V_func = jax.vmap(jax_evaluator.__call__,in_axes=(None,1, None),out_axes=0)
 def equation_jax(input_dict):
 
     t_start = timeit.default_timer()
-    y = jax_solver(input_dict)
+    y = jax_solver(t, input_dict)
     t_end = timeit.default_timer() - t_start
     print(f'Time to solve all: {t_end}')
     V = V_func(t, y, input_dict)
@@ -242,8 +242,8 @@ def MSE_jax(input_dict):
 
 
 from PSO import ParticleSwarmOptimizer
-PSO_Py = ParticleSwarmOptimizer(n_particles=os.cpu_count()*2, n_iterations=100, objective_function=MSE_jax, bounds={'Beta00':(-5,2),'Beta01':(-25,25),'Beta10':(-5,2),'Beta11':(-25,25),'Beta20':(-35,0),'Beta21':(-25,25),'Beta30':(-35,0),'Beta31':(-25,25)}, initial_params=input_dict_init)
-best_params, list_best = PSO_Py.optimize(MSE_jax)
+PSO_Py = ParticleSwarmOptimizer(n_particles=os.cpu_count()*2, n_iterations=100, objective_function=MSE, bounds={'Beta00':(-5,2),'Beta01':(-25,25),'Beta10':(-5,2),'Beta11':(-25,25),'Beta20':(-35,0),'Beta21':(-25,25),'Beta30':(-35,0),'Beta31':(-25,25)}, initial_params=input_dict_init)
+best_params, list_best = PSO_Py.optimize(MSE)
 h=1
 # model.set_equation(equation)
 #
