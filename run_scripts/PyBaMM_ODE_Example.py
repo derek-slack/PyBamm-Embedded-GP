@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 
 import pybamm
+import optuna
 
 # Import default version of the FoKL package
 import FoKL
@@ -73,73 +74,91 @@ if __name__ == '__main__':
     num_betas = 4
     beta0 = [0.5,0.5,1]
     var_list = ['a','b']
-    def equation(beta, mtx, d=True):
-        solution = solver.solve(model, t, t_interp=t, inputs={'a':beta[0], 'b':beta[1]}, calculate_sensitivities=d)
+
+    def optuna_equation(trial: optuna.trial):
+        a = trial.suggest_float('a', 0,1)
+        b = trial.suggest_float('b',0,1)
+        solution = solver.solve(model, t, t_interp=t, inputs={'a':a, 'b':b})
         res = solution['x'](t)
-        if d:
-            sens = []
-            for var in var_list:
-                beta_str_sens = var
-                sens.append(solution['x'].sensitivities[beta_str_sens])
 
-            return res, sens, False
-        else:
-            # plt.plot(t,res, label = 'model')
-            # plt.plot(t, x_data, label = 'data')
-            # plt.legend()
-            # plt.show()
-            return res
+        MSE = sum((res-x_data)**2)/len(res)
 
+        return MSE
 
-    GP_model.set_equation(equation)
+    # sampler = optuna.samplers.GPSampler()
+    study = optuna.create_study()
+    study.optimize(optuna_equation, n_trials=100)
+    print(study.best_value)
+    print(study.best_params)
 
-    draws = 100
-
-    samples, matrix, BIC = GP_model.full_routine(draws=draws, init_betas=beta0, tolerance=0)
-    print(samples)
-    d_vec = np.linspace(0,draws,draws+1)
-    ones = np.ones(d_vec.shape)
-    plt.plot(d_vec,samples[:,0], label = 'a prediction')
-    plt.plot(d_vec,samples[:,1], label = 'b prediction')
-    plt.plot(d_vec,a_in*ones,'k--',label="a actual")
-    plt.plot(d_vec, b_in*ones,'k--', label="b actual")
-    plt.ylim(0,1)
-    plt.xlabel("Iterations")
-    plt.title("HMC samples")
-    plt.legend()
-    plt.show()
-    t_fine = np.linspace(0, t[-1], 1000)
+    h=1
+    # def equation(beta, mtx, d=True):
+    #     solution = solver.solve(model, t, t_interp=t, inputs={'a':beta[0], 'b':beta[1]}, calculate_sensitivities=d)
+    #     res = solution['x'](t)
+    #     if d:
+    #         sens = []
+    #         for var in var_list:
+    #             beta_str_sens = var
+    #             sens.append(solution['x'].sensitivities[beta_str_sens])
     #
-    # t_sol, y_sol = solution.t, solution.y  # get solution times and states
-    # x = solution["x"]  # extract and process x from the solution
-    # y = solution["y"]  # extract and process y from the solution
-
-    x_sol = toy_solution(t_fine, a_in, b_in, x0)
-
-    a_50 = np.mean(samples[-50:, 0])
-    b_50 = np.mean(samples[-50:, 1])
-
-    x_sol_50 = toy_solution(t_fine, a_50, b_50, x0)
-
-    a_sort = np.sort(samples[-50:,0])
-    a_5 = a_sort[2]
-    a_95 = a_sort[-2]
-
-    b_sort = np.sort(samples[-50:, 1])
-    b_5 = b_sort[2]
-    b_95 = b_sort[-2]
-
-    x_sol_5 = toy_solution(t_fine, a_5, b_5, x0)
-    x_sol_95 = toy_solution(t_fine, a_95, b_95, x0)
-
-    fig, (ax1) = plt.subplots(1, 1, figsize=(13, 4))
-    ax1.plot(t_fine, x_sol)
-    ax1.plot(t_fine, x_sol_50)
-    ax1.plot(t, x_data, 'o')
-    ax1.plot(t_fine, x_sol_5,'k--', t_fine, x_sol_95, 'k--')
-    ax1.set_xlabel("t")
-    ax1.set_ylabel("x(t)")
-    ax1.legend(["analytical", "model prediction","data","bounds"], loc="best")
-
-    plt.show()
-
+    #         return res, sens, False
+    #     else:
+    #         # plt.plot(t,res, label = 'model')
+    #         # plt.plot(t, x_data, label = 'data')
+    #         # plt.legend()
+    #         # plt.show()
+    #         return res
+    #
+    #
+    # GP_model.set_equation(equation)
+    #
+    # draws = 100
+    #
+    # samples, matrix, BIC = GP_model.full_routine(draws=draws, init_betas=beta0, tolerance=0)
+    # print(samples)
+    # d_vec = np.linspace(0,draws,draws+1)
+    # ones = np.ones(d_vec.shape)
+    # plt.plot(d_vec,samples[:,0], label = 'a prediction')
+    # plt.plot(d_vec,samples[:,1], label = 'b prediction')
+    # plt.plot(d_vec,a_in*ones,'k--',label="a actual")
+    # plt.plot(d_vec, b_in*ones,'k--', label="b actual")
+    # plt.ylim(0,1)
+    # plt.xlabel("Iterations")
+    # plt.title("HMC samples")
+    # plt.legend()
+    # plt.show()
+    # t_fine = np.linspace(0, t[-1], 1000)
+    # #
+    # # t_sol, y_sol = solution.t, solution.y  # get solution times and states
+    # # x = solution["x"]  # extract and process x from the solution
+    # # y = solution["y"]  # extract and process y from the solution
+    #
+    # x_sol = toy_solution(t_fine, a_in, b_in, x0)
+    #
+    # a_50 = np.mean(samples[-50:, 0])
+    # b_50 = np.mean(samples[-50:, 1])
+    #
+    # x_sol_50 = toy_solution(t_fine, a_50, b_50, x0)
+    #
+    # a_sort = np.sort(samples[-50:,0])
+    # a_5 = a_sort[2]
+    # a_95 = a_sort[-2]
+    #
+    # b_sort = np.sort(samples[-50:, 1])
+    # b_5 = b_sort[2]
+    # b_95 = b_sort[-2]
+    #
+    # x_sol_5 = toy_solution(t_fine, a_5, b_5, x0)
+    # x_sol_95 = toy_solution(t_fine, a_95, b_95, x0)
+    #
+    # fig, (ax1) = plt.subplots(1, 1, figsize=(13, 4))
+    # ax1.plot(t_fine, x_sol)
+    # ax1.plot(t_fine, x_sol_50)
+    # ax1.plot(t, x_data, 'o')
+    # ax1.plot(t_fine, x_sol_5,'k--', t_fine, x_sol_95, 'k--')
+    # ax1.set_xlabel("t")
+    # ax1.set_ylabel("x(t)")
+    # ax1.legend(["analytical", "model prediction","data","bounds"], loc="best")
+    #
+    # plt.show()
+    #

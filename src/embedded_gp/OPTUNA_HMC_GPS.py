@@ -12,7 +12,7 @@ from FoKL import getKernels
 import itertools
 import numpy as np
 from numpy import random
-
+import optuna
 
 # Jax for data processing
 import jax
@@ -973,7 +973,7 @@ class Embedded_GP_Model:
                 damtx = np.append(damtx, vecs, axis=0)
 
             print(damtx)
-            return indvec, damtx.astype(int), vecs
+            return indvec.astype(list), damtx.astype(int), vecs
 
         def create_beta_inputs(len_mtx, GP_num):
             betas_function = []
@@ -1003,18 +1003,11 @@ class Embedded_GP_Model:
             Param_Class.add_function(name, damtx, arg_inds, betas_function, exp=exp, div_arg=div_arg)
             return indvec, damtx.astype(int), vecs
 
-        def init_solve(sim: pybamm.Simulation, t, data):
+        def init_solve(sim: pybamm.Simulation, t, data, beta_inputs, beta_bounds):
 
             def equation(input_dict):
                 t_start = timeit.default_timer()
-                # try:
                 sol = sim.solve(t, t_interp=t, inputs=input_dict)
-                # except:
-                #     for i in range(len(input_dict)):
-                #         try:
-                #             sim.solve(t, t_interp=t, inputs=input_dict)
-                #         except:
-                #             print(f"input dict {i} @ {input_dict[i]} failed")
                 t_end = timeit.default_timer() - t_start
                 print(f'Time to solve all: {t_end}')
                 V = []
@@ -1031,8 +1024,18 @@ class Embedded_GP_Model:
                     V = sol['Voltage [V]'].entries
                 return V
 
-            def MSE(input_dict):
-                error = self.data - equation(input_dict)
+            def MSE(trial: optuna.trial):
+                input_dict = {}
+                for beta in beta_inputs:
+                    bi = trial.suggest_float(beta, beta_bounds[beta][0],beta_bounds[beta][1])
+                    input_dict.update({beta: bi})
+                try:
+                    sol = equation(input_dict)
+                except:
+                    return 1e5
+                sol_empty = np.zeros(len(self.data))
+                sol_empty[0:len(sol)] = sol
+                error = self.data - sol_empty
                 if len(error) == len(data):
                     res = np.sum(error ** 2) / len(self.data)
                 else:
@@ -1040,6 +1043,15 @@ class Embedded_GP_Model:
                 return res
 
             return MSE
+
+        def plot_solve(sim: pybamm.Simulation, t, data, betas):
+            sol = sim.solve(t, t_interp=t, inputs=betas)
+            V = sol['Voltage [V]'].entries
+
+            plt.plot(t,V,label='Sim')
+            plt.plot(t,data,label='Data')
+
+            plt.show()
 
         def create_bounds(b0, bi, beta_dict):
             bounds = beta_dict.copy()
@@ -1071,22 +1083,30 @@ class Embedded_GP_Model:
                     for j in range(len(damtx_i)+1):
                         beta_str = 'Beta' + str(i) + str(j)
                         beta_dict_i.update({beta_str:0})
-                    bounds.append(create_bounds(GP['B0'], (-25, 0.5), beta_dict_i))
+                    bounds.append(create_bounds(GP['B0'], (-35, 35), beta_dict_i))
+                    for k in beta_dict_i.keys():
+                        if k not in beta_dict.keys():
+                            beta_dict.update({k:0})
                 global_bounds = {}
                 for bound_i in bounds:
                     global_bounds.update(bound_i)
 
                 params_new = ParamClass.get_param()
-                print(params_new['Negative particle diffusivity [m2.s-1]'](0.5, 0.5, 0.5))
+                # print(params_new['Negative particle diffusivity [m2.s-1]'](0.5, 0.5))
                 sim = pybamm.Simulation(batmodel, parameter_values=params_new, solver=solver)
 
-                obj_func = init_solve(sim, t, self.data)
+                obj_func = init_solve(sim, t, self.data, beta_dict, global_bounds)
+                # sampler = optuna.samplers.GPSampler()
+                study = optuna.create_study()
+                study.optimize(obj_func, n_trials=1000)
+                beters = study.best_params
+                ev = study.best_value
+                h=1
 
                 # Sample with new function parameters
 
-                self.PSO = ParticleSwarmOptimizer(n_particles=PSO_options['n_particles'], n_iterations=PSO_options['n_iterations'], initial_params=beta_dict, bounds=global_bounds, objective_function=obj_func)
 
-                beters, ev, beters_particles = self.PSO.optimize(obj_func)
+
 
                 # ev = (2*len(self.discmtx) + 1) * np.log(n) - 2 * np.max(neg_log_likelihood*-1)
 
@@ -1102,99 +1122,99 @@ class Embedded_GP_Model:
                 betas_keys_all = []
                 bounds_test = []
 
-                for n, GP in enumerate(GP_Function_dict_list):
-                    dam, null = np.shape(damtx[n])
-                    if ind > 1:
-                        vm, vn = np.shape(vecs[n])
-                    else:
-                        vm = np.shape(vecs[n])[0]
-                        vn = 1
-
-                    beters_test = []
-
-                    for ii, particle in enumerate(beters_particles):
-                        beters_test.append([])
-                        for term in range(len(damtx[n])+1):
-                            key_str = 'Beta' + str(n) + str(term)
-                            beters_test[ii].append(particle[key_str])
-
-                    beters_test = np.array(beters_test)
-                    betavs1 = np.abs(np.mean(beters_test[:, (dam - vm + 1):dam+1], axis=0))
-                    betavs2 = np.divide(np.std(np.array(beters_test[:, dam-vm+1:dam+1]), axis=0), \
-                        np.abs(np.mean(beters_test[:, dam-vm+1:dam+2], axis=0)))
-
-                    betavs3 = np.array(range(dam-vm+2, dam+2))
-                    betavs = np.transpose(np.array([betavs1,betavs2, betavs3]))
-                    if np.shape(betavs)[1] > 0:
-                        sortInds = np.argsort(betavs[:, 0])
-                        betavs = betavs[sortInds]
-
-                    killset = []
-                    evmin = ev
-
-                    threshav = 0.05
-                    threshstda = 0.5
-                    threshstdb = 2
-
-                    # This is for deletion of terms
-                    for i in range(0, vm):
-                        damtx_test = damtx[n]
-                        killtest = []
-                        # if betavs[i, 1] > threshstdb or betavs[i, 1] > threshstda and betavs[i, 0] < threshav * \
-                        #     np.mean(np.abs(np.mean(beters[int(np.ceil(draws/2 +1)):draws, 0]))):
-                        if betavs[i, 1] > threshstdb or betavs[i, 1] > threshstda and betavs[i, 0] < threshav * \
-                            np.mean(np.abs(np.mean(beters_test[:, 0]))):  # index to 'beters' \
-                            # adjusted for matlab to python [JPK DEV v3.1.0 20240129]
-
-                            killtest = np.append(killset, (betavs[i, 2] - 1))
-                            if killtest.size > 1:
-                                killtest[::-1].sort()  # max to min so damtx_test rows get deleted in order of end to start
-
-                            for k in range(0, np.size(killtest)):
-                                damtx_test = np.delete(damtx_test, int(np.array(killtest[k])-1), 0)
-                        damtx_test_all.append(damtx_test)
-                        killtest_all.append(killtest)
-                        betas_function, betas_keys = create_beta_inputs_killed(len(damtx_test) + 1, n, killtest)
-                        ParamClass.add_function(GP['Name'], damtx_test, GP['arg_inds'], betas_function, exp=GP['exp'], div_arg=GP['div_arg'])
-
-                        betas_keys_all.append(betas_keys)
-
-                        bounds_test.append(create_bounds(GP['B0'], (-25, 0.5), betas_keys))
+                # for n, GP in enumerate(GP_Function_dict_list):
+                #     dam, null = np.shape(damtx[n])
+                #     if ind > 1:
+                #         vm, vn = np.shape(vecs[n])
+                #     else:
+                #         vm = np.shape(vecs[n])[0]
+                #         vn = 1
+                #
+                #     beters_test = []
+                #
+                #     for ii, particle in enumerate(beters_particles):
+                #         beters_test.append([])
+                #         for term in range(len(damtx[n])+1):
+                #             key_str = 'Beta' + str(n) + str(term)
+                #             beters_test[ii].append(particle[key_str])
+                #
+                #     beters_test = np.array(beters_test)
+                #     betavs1 = np.abs(np.mean(beters_test[:, (dam - vm + 1):dam+1], axis=0))
+                #     betavs2 = np.divide(np.std(np.array(beters_test[:, dam-vm+1:dam+1]), axis=0), \
+                #         np.abs(np.mean(beters_test[:, dam-vm+1:dam+2], axis=0)))
+                #
+                #     betavs3 = np.array(range(dam-vm+2, dam+2))
+                #     betavs = np.transpose(np.array([betavs1,betavs2, betavs3]))
+                #     if np.shape(betavs)[1] > 0:
+                #         sortInds = np.argsort(betavs[:, 0])
+                #         betavs = betavs[sortInds]
+                #
+                #     killset = []
+                #     evmin = ev
+                #
+                #     threshav = 0.05
+                #     threshstda = 0.5
+                #     threshstdb = 2
+                #
+                #     # This is for deletion of terms
+                #     for i in range(0, vm):
+                #         damtx_test = damtx[n]
+                #         killtest = []
+                #         # if betavs[i, 1] > threshstdb or betavs[i, 1] > threshstda and betavs[i, 0] < threshav * \
+                #         #     np.mean(np.abs(np.mean(beters[int(np.ceil(draws/2 +1)):draws, 0]))):
+                #         if betavs[i, 1] > threshstdb or betavs[i, 1] > threshstda and betavs[i, 0] < threshav * \
+                #             np.mean(np.abs(np.mean(beters_test[:, 0]))):  # index to 'beters' \
+                #             # adjusted for matlab to python [JPK DEV v3.1.0 20240129]
+                #
+                #             killtest = np.append(killset, (betavs[i, 2] - 1))
+                #             if killtest.size > 1:
+                #                 killtest[::-1].sort()  # max to min so damtx_test rows get deleted in order of end to start
+                #
+                #             for k in range(0, np.size(killtest)):
+                #                 damtx_test = np.delete(damtx_test, int(np.array(killtest[k])-1), 0)
+                #         damtx_test_all.append(damtx_test)
+                #         killtest_all.append(killtest)
+                #         betas_function, betas_keys = create_beta_inputs_killed(len(damtx_test) + 1, n, killtest)
+                #         ParamClass.add_function(GP['Name'], damtx_test, GP['arg_inds'], betas_function, exp=GP['exp'], div_arg=GP['div_arg'])
+                #
+                #         betas_keys_all.append(betas_keys)
+                #
+                #         bounds_test.append(create_bounds(GP['B0'], (-25, 25), betas_keys))
                 # Re-intialize battery model for sampling
 
-                global_bounds_test = {}
-                for bound_i in bounds_test:
-                    global_bounds_test.update(bound_i)
-
-                params_test = ParamClass.get_param()
+                # global_bounds_test = {}
+                # for bound_i in bounds_test:
+                #     global_bounds_test.update(bound_i)
+                #
+                # params_test = ParamClass.get_param()
                 # print(params_test['Negative particle diffusivity [m2.s-1]'](0.5, 0.5))
-                sim_test = pybamm.Simulation(batmodel, parameter_values=params_test, solver=solver)
+                # sim_test = pybamm.Simulation(batmodel, parameter_values=params_test, solver=solver)
+                #
+                # obj_func_test = init_solve(sim_test, t, self.data)
+                #
+                # # Sample with new function parameters
+                # beta_dict_test = {}
+                # for dict_beta in betas_keys_all:
+                #     beta_dict_test.update(dict_beta)
+                #
+                # for key in beta_dict_test:
+                #     if key in beters:
+                #         beta_dict_test.update({key: beters[key]})
+                # self.PSO_test = ParticleSwarmOptimizer(n_particles=PSO_options['n_particles'],
+                #                                   n_iterations=PSO_options['n_iterations'],
+                #                                   initial_params=beta_dict_test, bounds=global_bounds_test,
+                #                                   objective_function=obj_func_test)
+                # betertest, evtest, null = self.PSO_test.optimize(obj_func_test)
 
-                obj_func_test = init_solve(sim_test, t, self.data)
-
-                # Sample with new function parameters
-                beta_dict_test = {}
-                for dict in betas_keys_all:
-                    beta_dict_test.update(dict)
-
-                for key in beta_dict_test:
-                    if key in beters:
-                        beta_dict_test.update({key: beters[key]})
-                self.PSO_test = ParticleSwarmOptimizer(n_particles=PSO_options['n_particles'],
-                                                  n_iterations=PSO_options['n_iterations'],
-                                                  initial_params=beta_dict_test, bounds=global_bounds_test,
-                                                  objective_function=obj_func_test)
-                betertest, evtest, null = self.PSO_test.optimize(obj_func_test)
-
-                if evtest < evmin:
-                    killset = killtest_all
-                    evmin = evtest
-
-                    beters = betertest
-                    print(f"Interactions removed: {killset}")
-                    for n in range(len(GP_Function_dict_list)):
-                        for k in range(0, np.size(killset[n])):
-                            damtx[n] = np.delete(damtx[n], int(np.array(killset[n][k]) - 1), 0)
+                # if evtest < evmin:
+                #     killset = killtest_all
+                #     evmin = evtest
+                #
+                #     beters = betertest
+                #     print(f"Interactions removed: {killset}")
+                #     for n in range(len(GP_Function_dict_list)):
+                #         for k in range(0, np.size(killset[n])):
+                #             damtx[n] = np.delete(damtx[n], int(np.array(killset[n][k]) - 1), 0)
 
                 # X = xers
 
@@ -1208,6 +1228,8 @@ class Embedded_GP_Model:
                         mtx = damtx
                         greater = 1
                         evs = np.append(evs, ev)
+
+                        plot_solve(sim,t,self.data, betas)
 
                     elif greater < tolerance:
                         greater = greater + 1
@@ -1223,36 +1245,40 @@ class Embedded_GP_Model:
                     evs = np.append(evs, ev)
 
                 for i, GP in enumerate(GP_Function_dict_list):
+
                     if len(indvec[i][0]) == 1:
                         stop = 1
                     elif way3:
-                        if indvec[i][1] > indvec[i][2]:
-                            indvec[i][0] = indvec[i][0] + 1
-                            indvec[i][1] = indvec[i][1] - 1
-                        elif indvec[i][2]:
-                            indvec[i][1] = indvec[i][1] + 1
-                            indvec[i][2] = indvec[i][2] - 1
-                            if indvec[i][1] > indvec[i][0]:
-                                indvec[i][0] = indvec[i][0] + 1
-                                indvec[i][1] = indvec[i][1] - 1
+                        if indvec[i][0][1] > indvec[i][0][2]:
+                            indvec[i][0][0] = indvec[i][0][0] + 1
+                            indvec[i][0][1] = indvec[i][0][1] - 1
+                        elif indvec[i][0][2]:
+                            indvec[i][0][1] = indvec[i][0][1] + 1
+                            indvec[i][0][2] = indvec[i][0][2] - 1
+                            if indvec[i][0][1] > indvec[i][0][0]:
+                                indvec[i][0][0] = indvec[i][0][0] + 1
+                                indvec[i][0][1] = indvec[i][0][1] - 1
 
-                    elif indvec[i][1]:
-                        indvec[i][0] = indvec[i][0] + 1
-                        indvec[i][1] = indvec[i][1] - 1
+                    elif indvec[i][0][1]:
+                        indvec[i][0][0] = indvec[i][0][0] + 1
+                        indvec[i][0][1] = indvec[i][0][1] - 1
                 break
 
 
 
             if finished != 0:
                 break
-            betas_reshape = []
-            for func in range(len(mtx)):
-                betas_reshape.append([])
-                for val in range(ind+1):
-                    betas_str = 'Beta' + str(func) + str(val)
-                    betas_reshape[func].append(betas[betas_str])
-            betas_np_reshape = np.array(betas_reshape)
-            new_betas = np.hstack([betas_np_reshape, np.zeros([len(init_betas),1])])
+            # betas_reshape = []
+            # for func in range(len(mtx)):
+            #     betas_reshape.append([])
+            #     for val in range(ind+1):
+            #         betas_str = 'Beta' + str(func) + str(val)
+            #         if betas_str in betas:
+            #             betas_reshape[func].append(betas[betas_str])
+            #         else:
+            #             betas_reshape[func].append(0)
+            # betas_np_reshape = np.array(betas_reshape)
+            # new_betas = np.hstack([betas_np_reshape, np.zeros([len(init_betas),1])])
             print(f'new betas: {new_betas}')
             ind = ind + 1
 

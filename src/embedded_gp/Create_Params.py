@@ -47,6 +47,7 @@ class ParamUpdate():
                         xs.append([args[x[0]]/args[x[1]]])
                     for x in arg_inds:
                         xs.append([args[x]])
+                    # xs.append([np.log(self.params['Current function [A]'])])
                     res = np.exp(self.evaluate_func(beta_func, mtx, xs))
                     return res
             else:
@@ -56,6 +57,7 @@ class ParamUpdate():
                         xs.append([args[x[0]]/args[x[1]]])
                     for x in arg_inds:
                         xs.append([args[x]])
+                    # xs.append([np.log(self.params['Current function [A]'])])
                     res = self.evaluate_func(beta_func, mtx, xs)
                     return res
         else:
@@ -64,6 +66,7 @@ class ParamUpdate():
                     xs = []
                     for x in arg_inds:
                         xs.append([args[x]])
+                    # xs.append([np.log(self.params['Current function [A]'])])
                     res = np.exp(self.evaluate_func(beta_func, mtx, xs))
                     return res
             else:
@@ -71,6 +74,7 @@ class ParamUpdate():
                     xs = []
                     for x in arg_inds:
                         xs.append([args[x]])
+                    # xs.append([np.log(self.params['Current function [A]'])])
                     res = self.evaluate_func(beta_func, mtx, xs)
                     return res
         if type(self.params[name]) is not float:

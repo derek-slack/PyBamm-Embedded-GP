@@ -32,7 +32,7 @@ def evaluate_pybamm(betas, mtx, inputs, coeff = None):
 
     m = jnp.shape(betas)[0]
     mbets = 1
-    n = jnp.shape(inputs)[0]  # Size of normalized inputs
+    n = jnp.shape(inputs)[1]  # Size of normalized inputs
     num_basis_terms = len(mtx)
     num_inputs = len(mtx[0])
     X_sol = []
@@ -120,7 +120,7 @@ def evaluate_pybamm_bernoulli(betas, mtx, inputs):
     if mtx.shape[0] == 0:
         return betas[0]
     else:
-        n = jnp.shape(inputs)[0]  # Size of normalized inputs
+        n = jnp.shape(inputs)[1]  # Size of normalized inputs
         num_basis_terms = len(mtx)
         num_inputs = len(mtx[0])
         X_sol = []
@@ -141,7 +141,7 @@ def evaluate_pybamm_bernoulli(betas, mtx, inputs):
                 phi = 1
                 for k in range(num_inputs):
                     num = mtx[j][k]
-                    phi*= bernoulli_func(phis_bernoulli, num, inputs[i][k])
+                    phi*= bernoulli_func(phis_bernoulli, num, inputs[k][i])
                 X_sol.append(phi)
 
         X_sol_ones = betas[0]
