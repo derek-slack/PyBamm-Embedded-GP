@@ -17,7 +17,7 @@ class ParamUpdate():
         else:
             raise NotImplementedError('kernel must be either "Bernoulli" or "Cubic"')
 
-    def add_function(self, name, mtx, arg_inds, betas_function, exp=False, div_arg=None, new_children = None):
+    def add_function(self, name, mtx, arg_inds, betas_function, exp=False, div_arg=None, div_const = None, new_children = None):
         """
         Creates Parameter function specified as a GP object
         inputs:
@@ -40,6 +40,7 @@ class ParamUpdate():
         beta_func = betas_function
 
         if div_arg is not None:
+
             if exp:
                 def pybamm_function(*args):
                     xs = []
@@ -47,6 +48,7 @@ class ParamUpdate():
                         xs.append([args[x[0]]/args[x[1]]])
                     for x in arg_inds:
                         xs.append([args[x]])
+
                     # xs.append([np.log(self.params['Current function [A]'])])
                     res = np.exp(self.evaluate_func(beta_func, mtx, xs))
                     return res
@@ -65,7 +67,10 @@ class ParamUpdate():
                 def pybamm_function(*args):
                     xs = []
                     for x in arg_inds:
-                        xs.append([args[x]])
+                        if div_const:
+                            xs.append([args[x]/div_const[0]])
+                        else:
+                            xs.append([args[x]])
                     # xs.append([np.log(self.params['Current function [A]'])])
                     res = np.exp(self.evaluate_func(beta_func, mtx, xs))
                     return res

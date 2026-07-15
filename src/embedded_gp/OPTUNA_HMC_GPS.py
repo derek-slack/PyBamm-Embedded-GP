@@ -995,19 +995,19 @@ class Embedded_GP_Model:
             return betas_function, betas_keys
 
         def create_new_func(i, Param_Class: ParamUpdate, name, arg_inds, inputs_function, ind, damtx=[], relats=[],
-                            exp=False, div_arg=None):
+                            exp=False, div_arg=None, div_const=None):
             indvec, damtx, vecs = create_interaction_matrix(inputs_function, ind, damtx=damtx, relats=relats)
             betas_function, betas_keys = create_beta_inputs(len(damtx)+1,i)
             print(betas_keys)
 
-            Param_Class.add_function(name, damtx, arg_inds, betas_function, exp=exp, div_arg=div_arg)
+            Param_Class.add_function(name, damtx, arg_inds, betas_function, exp=exp, div_arg=div_arg, div_const=div_const)
             return indvec, damtx.astype(int), vecs
 
         def init_solve(sim: pybamm.Simulation, t, data, beta_inputs, beta_bounds):
 
             def equation(input_dict):
                 t_start = timeit.default_timer()
-                sol = sim.solve(t, t_interp=t, inputs=input_dict)
+                sol = sim.solve(t, t_interp=t, inputs=input_dict, initial_soc=1)
                 t_end = timeit.default_timer() - t_start
                 print(f'Time to solve all: {t_end}')
                 V = []
@@ -1074,7 +1074,7 @@ class Embedded_GP_Model:
                  # re-initialize all GP functions here:
                 for i, GP in enumerate(GP_Function_dict_list):
                     damtx_i_1 = damtx[i]
-                    indvec_i, damtx_i, vecs_i = create_new_func(i,ParamClass, GP['Name'], GP['arg_inds'],GP['inputs_function'], ind, damtx_i_1, exp = GP['exp'], div_arg=GP['div_arg'] )
+                    indvec_i, damtx_i, vecs_i = create_new_func(i,ParamClass, GP['Name'], GP['arg_inds'],GP['inputs_function'], ind, damtx_i_1, exp = GP['exp'], div_arg=GP['div_arg'], div_const=GP['div_const'] )
                     indvec.append([indvec_i])
                     vecs.append(vecs_i)
                     damtx[i] = damtx_i
@@ -1098,9 +1098,11 @@ class Embedded_GP_Model:
                 obj_func = init_solve(sim, t, self.data, beta_dict, global_bounds)
                 # sampler = optuna.samplers.GPSampler()
                 study = optuna.create_study()
-                study.optimize(obj_func, n_trials=1000)
+                # 500 * (ind / 2)
+                study.optimize(obj_func, n_trials=5)
                 beters = study.best_params
                 ev = study.best_value
+                # self.return_functions(GP_Function_dict_list)
                 h=1
 
                 # Sample with new function parameters
@@ -1221,6 +1223,7 @@ class Embedded_GP_Model:
                 # print(ev)
                 # print(evmin)
                 print([ind, ev])
+
                 if np.size(evs) > 0:
                     if ev < np.min(evs):
 
@@ -1228,8 +1231,20 @@ class Embedded_GP_Model:
                         mtx = damtx
                         greater = 1
                         evs = np.append(evs, ev)
+                        self.params_mod = params_new
 
-                        plot_solve(sim,t,self.data, betas)
+                        sim_check = pybamm.Simulation(batmodel, parameter_values=params_new, solver=solver)
+                        sol_check = sim_check.solve(t,t_interp=t, inputs=beters, initial_soc=1)
+
+                        plt.figure(np.size(evs))
+                        plt.plot(t, self.data, label='Data')
+                        plt.plot(t, sol_check['Voltage [V]'].entries, label='PyBamm w/ GPs', linestyle=':')
+                        # plt.plot(t, self.pybamm_default_data, label='PyBamm Default', linestyle='--')
+                        # plt.plot(t, self.data, label='Data')
+                        plt.legend()
+                        plt.xlabel('Time [s]')
+                        plt.ylabel('Voltage [V]')
+                        plt.show(block=False)
 
                     elif greater < tolerance:
                         greater = greater + 1
@@ -1240,6 +1255,19 @@ class Embedded_GP_Model:
                 else:
                     greater = greater + 1
                     betas = beters
+                    self.params_mod = params_new
+
+                    sim_check = pybamm.Simulation(batmodel, parameter_values=params_new, solver=solver)
+                    sol_check = sim_check.solve(t, t_interp=t, inputs=beters, initial_soc=1)
+
+                    plt.plot(t, self.data, label='Data')
+                    plt.plot(t, sol_check['Voltage [V]'].entries, label='PyBamm w/ GPs', linestyle=':')
+                    # plt.plot(t, self.pybamm_default_data, label='PyBamm Default', linestyle='--')
+                    plt.legend()
+                    plt.xlabel('Time [s]')
+                    plt.ylabel('Voltage [V]')
+                    plt.show(block=False)
+
 
                     mtx = damtx
                     evs = np.append(evs, ev)
@@ -1301,6 +1329,12 @@ class Embedded_GP_Model:
     #     results = self.equation()
 
     #     return results
+    def return_functions(self, GP_Function_dict_list, parameter_set: dict):
+        func_dict = {}
+        for s in GP_Function_dict_list:
+            k = s['Name']
+            func_dict.update({k:parameter_set[k]})
+        return func_dict
     
     def inputs_to_phind(self, inputs, phis):
         """
