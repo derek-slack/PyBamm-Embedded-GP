@@ -1007,7 +1007,7 @@ class Embedded_GP_Model:
 
             def equation(input_dict):
                 t_start = timeit.default_timer()
-                sol = sim.solve(t, t_interp=t, inputs=input_dict, initial_soc=1)
+                sol = sim.solve(t, t_interp=t, inputs=input_dict)
                 t_end = timeit.default_timer() - t_start
                 print(f'Time to solve all: {t_end}')
                 V = []
@@ -1024,25 +1024,38 @@ class Embedded_GP_Model:
                     V = sol['Voltage [V]'].entries
                 return V
 
-            def MSE(trial: optuna.trial):
+            def NLL(trial: optuna.trial):
                 input_dict = {}
                 for beta in beta_inputs:
-                    bi = trial.suggest_float(beta, beta_bounds[beta][0],beta_bounds[beta][1])
+                    bi = trial.suggest_float(beta, beta_bounds[beta][0], beta_bounds[beta][1])
                     input_dict.update({beta: bi})
                 try:
                     sol = equation(input_dict)
                 except:
-                    return 1e5
-                sol_empty = np.zeros(len(self.data))
+                    return float(np.inf)
+
+                N = len(self.data)
+                sol_empty = np.zeros(N)
                 sol_empty[0:len(sol)] = sol
                 error = self.data - sol_empty
-                if len(error) == len(data):
-                    res = np.sum(error ** 2) / len(self.data)
+                K = len(input_dict.values())
+                # mu_zeros = np.zeros(K)
+                # mu_zeros[0] = mu_emp
+
+                sig = np.var(error)  # This is your variance (sigma^2)
+
+                # FIX 1: Changed `len(data)` to `len(self.data)` to prevent NameError
+                # FIX 2: Removed `/ len(self.data)` so 'res' is just the sum of squared errors
+                if len(error) == len(self.data):
+                    res = np.sum(error ** 2)
                 else:
-                    res = np.sum(error ** 2, axis=1) / len(self.data)
+                    res = np.sum(error ** 2, axis=1)
+
+                res = res / (2 * (sig)) + N / 2 * np.log(2 * np.pi * sig)
+                # prior = 0.5 * (w - mu_emp) @ np.linalg.inv(Sigma_emp) @ (w - mu_emp)
                 return res
 
-            return MSE
+            return NLL
 
         def plot_solve(sim: pybamm.Simulation, t, data, betas):
             sol = sim.solve(t, t_interp=t, inputs=betas)
@@ -1091,7 +1104,41 @@ class Embedded_GP_Model:
                 for bound_i in bounds:
                     global_bounds.update(bound_i)
 
+
                 params_new = ParamClass.get_param()
+
+                orig_neg_j0_func = params_new["Negative electrode exchange-current density [A.m-2]"]
+                orig_pos_j0_func = params_new["Positive electrode exchange-current density [A.m-2]"]
+
+                m_ref_neg = 1.061e-6
+                m_ref_pos = 4.824e-06
+
+
+                def dynamic_neg_j0_wrapper(c_e, c_s_surf, c_s_max, T):
+                    # Evaluate original function to get the actual pybamm.Symbol tree
+                    orig_symbol_tree = orig_neg_j0_func(c_e, c_s_surf, c_s_max, T)
+
+                    # Grab the dynamic reference parameter
+                    dynamic_ref = params_new["Negative electrode reference exchange-current density [A.m-2(m3.mol)1.5]"](c_s_surf,c_s_max)
+
+                    # Perform math on the evaluated SYMBOLS, bypassing the error
+                    return dynamic_ref * (orig_symbol_tree / m_ref_neg)
+
+                def dynamic_pos_j0_wrapper(c_e, c_s_surf, c_s_max, T):
+                    # Evaluate original function to get the actual pybamm.Symbol tree
+                    orig_symbol_tree = orig_pos_j0_func(c_e, c_s_surf, c_s_max, T)
+
+                    # Grab the dynamic reference parameter
+                    dynamic_ref = params_new[
+                        "Positive electrode reference exchange-current density [A.m-2(m3.mol)1.5]"](c_s_surf,c_s_max)
+                    # Perform math on the evaluated SYMBOLS, bypassing the error
+                    return dynamic_ref * (orig_symbol_tree / m_ref_pos)
+
+                # -------------------------------------------------------------------------
+                # 3. Inject the wrappers back into the dictionary
+                # -------------------------------------------------------------------------
+                params_new["Negative electrode exchange-current density [A.m-2]"] = dynamic_neg_j0_wrapper
+                params_new["Positive electrode exchange-current density [A.m-2]"] = dynamic_pos_j0_wrapper
                 # print(params_new['Negative particle diffusivity [m2.s-1]'](0.5, 0.5))
                 sim = pybamm.Simulation(batmodel, parameter_values=params_new, solver=solver)
 
@@ -1099,7 +1146,7 @@ class Embedded_GP_Model:
                 # sampler = optuna.samplers.GPSampler()
                 study = optuna.create_study()
                 # 500 * (ind / 2)
-                study.optimize(obj_func, n_trials=5)
+                study.optimize(obj_func, n_trials=PSO_options['n_iterations'])
                 beters = study.best_params
                 ev = study.best_value
                 # self.return_functions(GP_Function_dict_list)

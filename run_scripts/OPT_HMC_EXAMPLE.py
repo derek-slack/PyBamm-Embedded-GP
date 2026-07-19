@@ -1,7 +1,7 @@
 import os
 import timeit
 
-from src.embedded_gp.post_process import PostProcess
+from sympy.printing.pretty.pretty_symbology import line_width
 
 os.environ['JAX_PLATFORM_NAME'] = 'cpu'
 import pybamm
@@ -15,11 +15,12 @@ from src.embedded_gp import OPTUNA_HMC_GPS
 
 import pandas as pd
 import matplotlib
-matplotlib.use('Tkagg')
+# matplotlib.use()
 import matplotlib.pyplot as plt
 from FoKL import getKernels
 import warnings
 from Create_Params import ParamUpdate
+from src.Data.Processed_Data.Samsung_25R_Parameters import samsung_25r_params
 
 from pathlib import Path
 
@@ -30,7 +31,6 @@ warnings.filterwarnings("ignore")
 
 k = "symmetric Butler-Volmer"
 pb.set_logging_level("NOTICE")
-
 
 
 save_folder = "figures"
@@ -49,19 +49,21 @@ def normalize_inputs(inputs, min, max):
     normalized = (inputs - min) / (max - min)
     return normalized
 
-testing = pd.read_csv('/Users/derekslack/Pybamm-Embedded-GP-live/src/Data/modEpscorData.csv')
+testing = pd.read_csv('/Users/derekslack/Pybamm-Embedded-GP-live/src/Data/Processed_Data/EPSCoR_CP - 013.csv')
 
-i_begin = 820
-i_end = 4365
-i_c = 2464
-
+i_begin = 823
+# i_end = 8763
+i_c = 3285
+# i_begin = 827
+# i_end = 2688
+# i_c = i_end
 # i_c = i_end
 
-Volt = testing['Volts'].to_numpy()[820:i_c]
-Amps = testing['Amps'].to_numpy()[820:i_c]
+Volt = testing['Volts'].to_numpy()[i_begin:i_c]
+Amps = testing['Amps'].to_numpy()[i_begin:i_c]
 # Amps[2464:] = -Amps[2464:]
-time = testing['TestTime'].to_numpy()[820:i_c]
-Temp = testing['Temp 2'].to_numpy()[820:i_c]
+time = testing['TestTime'].to_numpy()[i_begin:i_c]
+Temp = testing['EV Temp'].to_numpy()[i_begin:i_c]
 
 testing = []
 
@@ -79,42 +81,22 @@ def convert_time(t_vec):
 normtime = convert_time(time)
 t = normtime - normtime[0]
 
-def current_func(time_I):
-    if time_I <= 819-220:
-        I = 0.
-    elif 819-220 < time_I <= 1720-220:
-        I = 1.25
-    elif 1720-220 < time_I <= 1780-220:
-        I = 0.
-    elif 1780-220 < time_I <= 2682-220:
-        I = 2.5
-
-    return I
-
-# def current_func(time):
-#     I = 1.25 * (time <= 900) + 0 * (time <= 960) + 2.5 * (time <= 1860) + 0 * (time <= 2460) + -1.25 * (time > 2460)
-#     return I
-
-
 # Create object for each individual GP
-GPj0p = OPTUNA_HMC_GPS.GP()
-GPj0n = OPTUNA_HMC_GPS.GP()
+# GPj0p = OPTUNA_HMC_GPS.GP()
+# GPj0n = OPTUNA_HMC_GPS.GP()
 GPUP = OPTUNA_HMC_GPS.GP()
 GPUN = OPTUNA_HMC_GPS.GP()
+GPUe = OPTUNA_HMC_GPS.GP()
 
 
 # Create of model and define the number of GP's in it
-model = OPTUNA_HMC_GPS.Embedded_GP_Model(GPj0p, GPj0n, GPUP, GPUN)
+model = OPTUNA_HMC_GPS.Embedded_GP_Model(GPUP, GPUN, GPUe)
 
 # Define appropriate parameters to model
 # model.inputs = np.transpose(np.vstack([inputs_norm, inputs_norm]))
 model.inputs = np.transpose(np.array([t]))
 model.phis = phis
 model.data = np.transpose(Volt)
-
-#
-# plt.plot(t,Amps)
-# plt.show()
 
 current_interpolant = pybamm.Interpolant(t, Amps, pybamm.t)#, interpolator="JAX")  # , _num_derivatives=0)
 param1["Current function [A]"] = current_interpolant
@@ -131,7 +113,7 @@ DP = -35
 # beta0 = [[np.log(11),0], [np.log(14),0], [np.log(-24.04),0], [np.log(-31.04),0]]
 #
 
-beta0 = [[np.log(11),0], [np.log(14),0],[-24,0],[-32,0],[-21,0]]
+beta0 = [[np.log(1e-6),0], [np.log(1e-6),0],[-24,0],[-32,0]]
 #[I 2026-01-14 17:15:36,016] Trial 91 finished with value: 0.000559875001732329 and parameters: {'Beta00': 0.6668933738331815, 'Beta01': -20.89446095794654, 'Beta02': -25.035551389790516, 'Beta10': 2.82829197497284, 'Beta11': 0.28923765640049015, 'Beta12': -17.581813898668265, 'Beta20': -11.661717831866273, 'Beta21': -11.248503672366766, 'Beta22': 0.10651268580057194, 'Beta30': -18.124407967099472, 'Beta31': -14.742907441717046, 'Beta32': 0.28138889792779964}. Best is trial 91 with value: 0.000559875001732329.
 # Time to solve all: 3.3091935419943184
 # beta0 = [[-24,-29]]
@@ -150,17 +132,18 @@ def process_tree(symbol: pybamm.Symbol):
 
 # Param_Updater = Create_Params.ParamUpdate(param1,beta0, [[[1]],[[1]],[[1]],[[1]]])
 # {'Beta00':(-5,2),'Beta01':(-25,25),'Beta10':(-5,2),'Beta11':(-25,25),'Beta20':(-35,0),'Beta21':(-25,25),'Beta30':(-35,0),'Beta31':(-25,25)}
-GP_dict_j0_pos = {'Name':'Positive electrode exchange-current density [A.m-2]', 'arg_inds':[], 'div_arg':[[1,2]], 'exp':True, 'inputs_function':1, 'B0':(-5,3), 'div_const':None}
-GP_dict_j0_neg = {'Name':'Negative electrode exchange-current density [A.m-2]', 'arg_inds':[], 'div_arg':[[1,2]], 'exp':True, 'inputs_function':1, 'B0':(-5,3), 'div_const':None}
+GP_dict_j0_pos = {'Name':"Positive electrode reference exchange-current density [A.m-2(m3.mol)1.5]", 'arg_inds':[], 'div_arg':[[0,1]], 'exp':True, 'inputs_function':1, 'B0':(-16,-4), 'div_const':None}
+GP_dict_j0_neg = {'Name':"Negative electrode reference exchange-current density [A.m-2(m3.mol)1.5]", 'arg_inds':[], 'div_arg':[[0,1]], 'exp':True, 'inputs_function':1, 'B0':(-16,-4), 'div_const':None}
 GP_dict_D_pos = {'Name':'Positive particle diffusivity [m2.s-1]', 'arg_inds':[0],  'exp':True, 'inputs_function':1,'div_arg':None, 'B0':(-35,-9), 'div_const':None}
 GP_dict_D_neg = {'Name':'Negative particle diffusivity [m2.s-1]', 'arg_inds':[0],  'exp':True, 'inputs_function':1, 'div_arg':None, 'B0':(-33,-12), 'div_const':None}
-GP_dict_D_e = {'Name':'Electrolyte diffusivity [m2.s-1]', 'arg_inds':[0],  'exp':True, 'inputs_function':1, 'div_arg':None, 'B0':(-33,-12), 'div_const':[2000]}
+# GP_dict_D_e = {'Name':'Electrolyte diffusivity [m2.s-1]', 'arg_inds':[0],  'exp':True, 'inputs_function':1, 'div_arg':None, 'B0':(-33,-12), 'div_const':[2000]}
 
 
 
-GP_dict_list = [GP_dict_j0_pos, GP_dict_j0_neg,GP_dict_D_pos, GP_dict_D_neg, GP_dict_D_e]
+GP_dict_list = [GP_dict_j0_pos, GP_dict_j0_neg, GP_dict_D_pos, GP_dict_D_neg]
+
 # GP_dict_list = [GP_dict_D_neg]
-PSO_options = {'n_particles':  6, 'n_iterations':50}
+PSO_options = {'n_particles':  6, 'n_iterations':150}
 i=0
 # input_dict_init = Param_Updater._to_input_dict(beta0)
 
@@ -219,7 +202,7 @@ batmodel2 = pybamm.lithium_ion.SPMe()
 # mesh = pybamm.Mesh(geometry, batmodel.default_submesh_types, var_pts)
 # disc = pybamm.Discretisation(mesh, batmodel.default_spatial_methods)
 # disc.process_model(batmodel)
-output_variables = ["Voltage [V]"]
+output_variables = ["Voltage [V]", "Positive particle effective diffusivity [m2.s-1]"]
 # param1["Negative electrode thickness [m]"] = 5.55148335e-04
 # param1["Positive electrode thickness [m]"]  = 6.50653019e-05
 # param1.update({'Beta00': 1.2173296437832817, 'Beta01': -9.245791064580327, 'Beta10': -0.49194874119979054, 'Beta11': 3.874952819403981, 'Beta20': -31.544335922734724, 'Beta21': 1.7556420666704216, 'Beta30': -15.616266049850648, 'Beta31': 30.477701755503592, 'Beta40': -14.282171660505345, 'Beta41': -20.00183111749591})
@@ -227,7 +210,9 @@ output_variables = ["Voltage [V]"]
 
 
 # param2 = pybamm.ParameterValues('Chen2020')
+samsung_25r_updates = samsung_25r_params()
 
+param1.update(samsung_25r_updates, check_already_exists=False)
 param1["Current function [A]"] = current_interpolant
 # param1["Negative electrode thickness [m]"] = 7.95011190e-05
 # param1["Positive electrode thickness [m]"]  = 2.68659159e-05
@@ -236,33 +221,11 @@ param1["Current function [A]"] = current_interpolant
 # param1["Maximum concentration in negative electrode [mol.m-3]"] = 3.23761910e+04
 
 
-samsung_25r_updates = {
-    # Cell Geometry
-    "Electrode height [m]": 0.875,  # Unwound length from Kartini paper
-    "Electrode width [m]": 0.057,  # Unwound width from Kartini paper
-    "Cell volume [m3]": 1.65e-05,  # Volume of an 18650 cylinder
-
-    # Electrode Thicknesses (Correcting the decimal error in the paper)
-    "Negative electrode thickness [m]": 8.88722531e-05,
-    "Positive electrode thickness [m]": 6.81458654e-05,
-    "Separator thickness [m]": 1.5e-05,
-
-    # Particle Radii (Crucial for fixing the GP relaxation artifact)
-    "Positive particle radius [m]": 2.0e-07,  # 400nm diameter from SEM
-    # Note: Assuming graphite anode radius is fairly standard if not in the paper
-    "Negative particle radius [m]": 2.0e-06,
-    "Nominal cell capacity [A.h]": 2.32234349e+00,
-    "Maximum concentration in positive electrode [mol.m-3]":6.37991454e+04,
-    "Maximum concentration in negative electrode [mol.m-3]":4.51571679e+04,
-    "Initial concentration in negative electrode [mol.m-3]":3.52763550e+04,
-    "Initial concentration in positive electrode [mol.m-3]":1.46025037e+03
-}
-param1.update(samsung_25r_updates, check_already_exists=False)
 
 # param1["Initial concentration in negative electrode [mol.m-3]"] = 1.56431275e+04
 # param1["Initial concentration in positive electrode [mol.m-3]"] =  1.82098527e+04
 
-best_params = {'Beta00': 2.3780408310015293, 'Beta01': 4.792779231694654, 'Beta10': 0.887001250585174, 'Beta11': 19.09087887202484, 'Beta20': -27.535424984248685, 'Beta21': 25.743803349957393, 'Beta30': -21.11562285975143, 'Beta31': 20.280000767567966, 'Beta40': -22.203990091520758, 'Beta41': 10.975168387303858, 'Beta02': -14.376561708956425, 'Beta03': -12.217815878115093, 'Beta12': 6.873879312718643, 'Beta13': 34.89743581745051, 'Beta22': -7.609235952846025, 'Beta23': 11.593698323508024, 'Beta32': -32.34356924316246, 'Beta33': 26.7010691027816, 'Beta42': -32.730537168308445, 'Beta43': 20.564377872899925}
+# best_params = {'Beta00': 2.3780408310015293, 'Beta01': 4.792779231694654, 'Beta10': 0.887001250585174, 'Beta11': 19.09087887202484, 'Beta20': -27.535424984248685, 'Beta21': 25.743803349957393, 'Beta30': -21.11562285975143, 'Beta31': 20.280000767567966, 'Beta40': -22.203990091520758, 'Beta41': 10.975168387303858, 'Beta02': -14.376561708956425, 'Beta03': -12.217815878115093, 'Beta12': 6.873879312718643, 'Beta13': 34.89743581745051, 'Beta22': -7.609235952846025, 'Beta23': 11.593698323508024, 'Beta32': -32.34356924316246, 'Beta33': 26.7010691027816, 'Beta42': -32.730537168308445, 'Beta43': 20.564377872899925}
 solver = pybamm.IDAKLUSolver(atol=1e-4, rtol=1e-2, output_variables=output_variables, options={'num_threads':os.cpu_count()-2})
 # sim = pybamm.Simulation(batmodel, parameter_values=param1, solver=solver)
 # sol1 = sim.solve(t,t_interp=t)
@@ -288,12 +251,22 @@ model.t = t
 model.solution = None
 # model.pybamm_default_data = sol2['Voltage [V]'].entries
 
-damtx = [np.array([[1], [2], [3]]),
- np.array([[1], [2], [3]]),
- np.array([[1], [2], [3]]),
- np.array([[1], [2], [3]]),
- np.array([[1], [2], [3]])]
+damtx = [ np.array([[1.],
+                    ]).astype(int),
+          np.array([[1.],
+                    ]).astype(int),
+          np.array([[1.],
+                    ]).astype(int),
+          np.array([[1.],
+                    ]).astype(int)]
 
+# [[0. 1.]
+#  [1. 0.]
+#  [0. 2.]
+#  [2. 0.]]
+# -9103.61530756552 and parameters: {'Beta00': -30.372784184576552, 'Beta01': 14.117244051266038, 'Beta10': -32.46033837079, 'Beta11': -8.378155789624923, 'Beta20': -12.719067431093192, 'Beta21': 27.880580499255856, 'Beta02': 18.67986914419243, 'Beta03': 9.484670163548538, 'Beta04': -16.544623087653978, 'Beta05': -8.58467847307578, 'Beta06': 9.113104560986619, 'Beta12': -18.283329099389, 'Beta13': -19.483423256841462, 'Beta14': -26.96219079145742, 'Beta15': 2.433016369250007, 'Beta16': 19.46263850557794, 'Beta22': -4.0295422673206485, 'Beta23': 18.334934263147918, 'Beta24': 22.88602474412472, 'Beta25': -0.17032601082345966, 'Beta26': 26.294068331471863}
+# best = {'Beta00': -30.372784184576552, 'Beta01': 14.117244051266038, 'Beta10': -32.46033837079, 'Beta11': -8.378155789624923, 'Beta20': -12.719067431093192, 'Beta21': 27.880580499255856, 'Beta02': 18.67986914419243, 'Beta03': 9.484670163548538, 'Beta04': -16.544623087653978, 'Beta05': -8.58467847307578, 'Beta06': 9.113104560986619, 'Beta12': -18.283329099389, 'Beta13': -19.483423256841462, 'Beta14': -26.96219079145742, 'Beta15': 2.433016369250007, 'Beta16': 19.46263850557794, 'Beta22': -4.0295422673206485, 'Beta23': 18.334934263147918, 'Beta24': 22.88602474412472, 'Beta25': -0.17032601082345966, 'Beta26': 26.294068331471863}
+best = {'Beta00': 4.368844168378062, 'Beta01': -18.069578497342974, 'Beta10': -1.6258703200476665, 'Beta11': 1.8134287122031123, 'Beta20': -19.544229844062063, 'Beta21': 16.03612699039317, 'Beta30': -24.89521126732811, 'Beta31': 12.43977490513863}
 
 def create_beta_inputs(len_mtx, GP_num):
     betas_function = []
@@ -310,11 +283,66 @@ for i, GP in enumerate(GP_dict_list):
     betas_function, betas_keys = create_beta_inputs(len(damtx[i])+1, i)
     P.add_function(GP['Name'], damtx[i], GP['arg_inds'], betas_function, exp=GP['exp'], div_arg=GP['div_arg'], div_const=GP['div_const'])
 
-sim = pybamm.Simulation(batmodel, parameter_values=param1, solver=solver)
-sol1 = sim.solve(t,t_interp=t, inputs=best_params, initial_soc=1)
-plt.plot(t,sol1['Voltage [V]'].entries)
-plt.plot(t, Volt)
-betas, mtx, evs = model.full_routine(t, 3, param1, GP_dict_list, batmodel, solver, PSO_options, way3 = 0, init_betas = beta0)
+P_validate = P.get_param()
+
+orig_neg_j0_func = P_validate["Negative electrode exchange-current density [A.m-2]"]
+orig_pos_j0_func = P_validate["Positive electrode exchange-current density [A.m-2]"]
+
+m_ref_neg = 1.061e-6
+m_ref_pos = 4.824e-06
+
+
+def dynamic_neg_j0_wrapper(c_e, c_s_surf, c_s_max, T):
+    # Evaluate original function to get the actual pybamm.Symbol tree
+    orig_symbol_tree = orig_neg_j0_func(c_e, c_s_surf, c_s_max, T)
+
+    # Grab the dynamic reference parameter
+    dynamic_ref = P_validate["Negative electrode reference exchange-current density [A.m-2(m3.mol)1.5]"](c_s_surf,
+                                                                                                         c_s_max)
+
+    # Perform math on the evaluated SYMBOLS, bypassing the error
+    return dynamic_ref * (orig_symbol_tree / m_ref_neg)
+
+
+def dynamic_pos_j0_wrapper(c_e, c_s_surf, c_s_max, T):
+    # Evaluate original function to get the actual pybamm.Symbol tree
+    orig_symbol_tree = orig_pos_j0_func(c_e, c_s_surf, c_s_max, T)
+
+    # Grab the dynamic reference parameter
+    dynamic_ref = P_validate[
+        "Positive electrode reference exchange-current density [A.m-2(m3.mol)1.5]"](c_s_surf, c_s_max)
+    # Perform math on the evaluated SYMBOLS, bypassing the error
+    return dynamic_ref * (orig_symbol_tree / m_ref_pos)
+
+
+# -------------------------------------------------------------------------
+# 3. Inject the wrappers back into the dictionary
+# -------------------------------------------------------------------------
+P_validate["Negative electrode exchange-current density [A.m-2]"] = dynamic_neg_j0_wrapper
+P_validate["Positive electrode exchange-current density [A.m-2]"] = dynamic_pos_j0_wrapper
+
+
+best = {'Beta00': -9.92724638318497, 'Beta01': 3.2738806098683697, 'Beta10': -14.52530153425246, 'Beta11': 1.5797308324261015, 'Beta20': -15.512450048980867, 'Beta21': 1.8902924768972538, 'Beta30': -18.784412642194486, 'Beta31': -0.7178834034852439}
+
+sim = pybamm.Simulation(batmodel, parameter_values=P_validate, solver=solver)
+sol1 = sim.solve(t,t_interp=t, inputs=best)
+plt.plot(t, Volt, 'r-',label='Data')
+plt.plot(t[0:len(sol1['Voltage [V]'].entries)],sol1['Voltage [V]'].entries,'b:' ,label='PyBaMM w/ GPs', linewidth=2)
+
+
+rmse = np.sqrt(np.sum((sol1['Voltage [V]'].entries - Volt)**2)/len(Volt))
+
+plt.text(200,3.7, f'RMSE = {rmse:.3f}',
+         fontsize=12, color='black',
+         bbox=dict(facecolor='white', alpha=0.8, edgecolor='black'))
+
+plt.title('Training on Power Discharge')
+# plt.title('Validation on CC Discharge')
+plt.xlabel('Time [s]')
+plt.ylabel('Voltage [V]')
+plt.legend()
+plt.show()
+betas, mtx, evs = model.full_routine(t, 1, param1, GP_dict_list, batmodel, solver, PSO_options, way3 = 0, init_betas = beta0)
 
 
 def equation(input_dict):
@@ -329,5 +357,12 @@ def equation(input_dict):
     else:
         V = sol['Voltage [V]'].entries
     return V
+
+# {'Beta00': -16.706699716257287, 'Beta01': 1.985789257860028, 'Beta10': -17.84407945392173, 'Beta11': -20.77156803640722, 'Beta20': -14.095366762698887, 'Beta21': -31.546115051998655, 'Beta02': 28.118082246360874, 'Beta03': -21.880533117252746, 'Beta04': -19.202501047514072, 'Beta12': 15.618006279636127, 'Beta13': -5.378903308480867, 'Beta14': 8.51790601481931, 'Beta22': -25.8379929988852, 'Beta23': -9.056361165698595, 'Beta24': -28.8900996325147}
+
+
+# [[1.]]
+# {'Beta00': -20.048846936123304, 'Beta01': 29.316550682811524, 'Beta10': -25.06336596985507, 'Beta11': 21.56215085263448, 'Beta20': -14.463512065721662, 'Beta21': -28.526718510672143}
+
 
 # 7.271519953682185e-05 and parameters: {'Beta00': 2.3780408310015293, 'Beta01': 4.792779231694654, 'Beta10': 0.887001250585174, 'Beta11': 19.09087887202484, 'Beta20': -27.535424984248685, 'Beta21': 25.743803349957393, 'Beta30': -21.11562285975143, 'Beta31': 20.280000767567966, 'Beta40': -22.203990091520758, 'Beta41': 10.975168387303858, 'Beta02': -14.376561708956425, 'Beta03': -12.217815878115093, 'Beta12': 6.873879312718643, 'Beta13': 34.89743581745051, 'Beta22': -7.609235952846025, 'Beta23': 11.593698323508024, 'Beta32': -32.34356924316246, 'Beta33': 26.7010691027816, 'Beta42': -32.730537168308445, 'Beta43': 20.564377872899925}. Best is trial 437 with value: 7.271519953682185e-05.
