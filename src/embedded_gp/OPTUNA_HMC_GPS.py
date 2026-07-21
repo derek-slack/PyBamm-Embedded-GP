@@ -1026,9 +1026,17 @@ class Embedded_GP_Model:
 
             def NLL(trial: optuna.trial):
                 input_dict = {}
+                prior_diff = []
+                sigma = []
                 for beta in beta_inputs:
                     bi = trial.suggest_float(beta, beta_bounds[beta][0], beta_bounds[beta][1])
                     input_dict.update({beta: bi})
+                    if beta in self.model_priors:
+                        prior_diff.append(bi-self.model_priors[beta])
+                        sigma.append(self.model_sigma[beta])
+                    else:
+                        prior_diff.append(0)
+                        sigma.append(0.3)
                 try:
                     sol = equation(input_dict)
                 except:
@@ -1038,22 +1046,20 @@ class Embedded_GP_Model:
                 sol_empty = np.zeros(N)
                 sol_empty[0:len(sol)] = sol
                 error = self.data - sol_empty
-                K = len(input_dict.values())
-                # mu_zeros = np.zeros(K)
-                # mu_zeros[0] = mu_emp
 
-                sig = np.var(error)  # This is your variance (sigma^2)
-
-                # FIX 1: Changed `len(data)` to `len(self.data)` to prevent NameError
-                # FIX 2: Removed `/ len(self.data)` so 'res' is just the sum of squared errors
                 if len(error) == len(self.data):
                     res = np.sum(error ** 2)
                 else:
                     res = np.sum(error ** 2, axis=1)
 
-                res = res / (2 * (sig)) + N / 2 * np.log(2 * np.pi * sig)
-                # prior = 0.5 * (w - mu_emp) @ np.linalg.inv(Sigma_emp) @ (w - mu_emp)
-                return res
+                sig = self.sigma_fixed
+                res = res / (2 * sig) + N / 2 * np.log(2 * np.pi * sig)
+
+                prior_diff = np.array(prior_diff)
+                prior_precision = 1.0 / (np.array(sigma) ** 2)
+                prior = 0.5 * np.sum(prior_precision * prior_diff ** 2)  # elementwise, no matrix needed
+
+                return res + prior
 
             return NLL
 
@@ -1096,7 +1102,7 @@ class Embedded_GP_Model:
                     for j in range(len(damtx_i)+1):
                         beta_str = 'Beta' + str(i) + str(j)
                         beta_dict_i.update({beta_str:0})
-                    bounds.append(create_bounds(GP['B0'], (-35, 35), beta_dict_i))
+                    bounds.append(create_bounds(GP['B0'], (-35, 4), beta_dict_i))
                     for k in beta_dict_i.keys():
                         if k not in beta_dict.keys():
                             beta_dict.update({k:0})
@@ -1110,8 +1116,10 @@ class Embedded_GP_Model:
                 orig_neg_j0_func = params_new["Negative electrode exchange-current density [A.m-2]"]
                 orig_pos_j0_func = params_new["Positive electrode exchange-current density [A.m-2]"]
 
-                m_ref_neg = 1.061e-6
-                m_ref_pos = 4.824e-06
+                # m_ref_neg = 1.061e-6
+                # m_ref_pos = 4.824e-06
+                m_ref_neg = 6.48e-7
+                m_ref_pos = 3.42e-6
 
 
                 def dynamic_neg_j0_wrapper(c_e, c_s_surf, c_s_max, T):
@@ -1305,7 +1313,7 @@ class Embedded_GP_Model:
                     self.params_mod = params_new
 
                     sim_check = pybamm.Simulation(batmodel, parameter_values=params_new, solver=solver)
-                    sol_check = sim_check.solve(t, t_interp=t, inputs=beters, initial_soc=1)
+                    sol_check = sim_check.solve(t, t_interp=t, inputs=beters)
 
                     plt.plot(t, self.data, label='Data')
                     plt.plot(t, sol_check['Voltage [V]'].entries, label='PyBamm w/ GPs', linestyle=':')

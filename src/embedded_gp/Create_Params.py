@@ -82,15 +82,15 @@ class ParamUpdate():
                     # xs.append([np.log(self.params['Current function [A]'])])
                     res = self.evaluate_func(beta_func, mtx, xs)
                     return res
-        if type(self.params[name]) is not float:
-            function_args = self.params[name].__code__.co_varnames
-            function_args_mod = []
-            if div_arg is not None:
-                for x in div_arg:
-                    function_args_mod.append(function_args[x[0]] + str('/') + function_args[x[1]])
-            for x in arg_inds:
-                function_args_mod.append(function_args[x])
-            print(f"GP function created for {name} \n inputs are {function_args_mod}")
+        # if type(self.params[name]) is not float:
+        #     function_args = self.params[name].__code__.co_varnames
+        #     function_args_mod = []
+        #     if div_arg is not None:
+        #         for x in div_arg:
+        #             function_args_mod.append(function_args[x[0]] + str('/') + function_args[x[1]])
+        #     for x in arg_inds:
+        #         function_args_mod.append(function_args[x])
+        #     print(f"GP function created for {name} \n inputs are {function_args_mod}")
         self.params[name] = pybamm_function
 
 

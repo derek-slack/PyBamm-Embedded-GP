@@ -147,61 +147,61 @@ plt.show()
 
 # --- FREE: only particle radius — governs diffusion limitation / knee sharpness,
 #     NOT total capacity, so it can't reintroduce the magnitude blow-up ---
-free_parameters = {
-    "Negative particle radius [m]": pybop.Parameter(
-        distribution=pybop.Uniform(4e-6, 10e-6),
-    ),
-    "Positive particle radius [m]": pybop.Parameter(
-        distribution=pybop.Uniform(3e-6, 7e-6),
-    ),
-}
-
-
-parameters.update(free_parameters)
-
-print(f"Initializing {model.name} Simulator...")
-# Simulator takes parameter_values directly, NO standalone parameters list
-simulator = pybop.pybamm.Simulator(
-    model,
-    parameter_values=parameters,
-    protocol=dataset
-)
-
-# Standard problem definition pipeline
-cost = pybop.SumSquaredError(dataset)
-problem = pybop.Problem(simulator, cost)
-
-options = pybop.PintsOptions(
-    verbose=True,
-    max_iterations=150,
-    max_unchanged_iterations=30,
-)
-optim = pybop.XNES(problem, options=options)
-optim.set_population_size(10)
-
-print("Starting XNES Optimization...")
-result = optim.run()
-
-# ==============================================================================
-# 5. Results & Visualization
-# ==============================================================================
-# print(f"| Model: {model.name} | Cost: {result.x} |")
-# print("Optimized Thermodynamic Parameters:")
-
-# Extract specific keys from the PyBOP result dictionary
-for key in free_parameters.keys():
-    print(f"  {key}: {result.best_inputs.get(key)}")
-
-pybop.plot.problem(problem, result.best_inputs, title="Optimized OCP Fit - 0.2A Discharge")
+# free_parameters = {
+#     "Negative particle radius [m]": pybop.Parameter(
+#         distribution=pybop.Uniform(4e-6, 10e-6),
+#     ),
+#     "Positive particle radius [m]": pybop.Parameter(
+#         distribution=pybop.Uniform(3e-6, 7e-6),
+#     ),
+# }
+#
+#
+# parameters.update(free_parameters)
+#
+# print(f"Initializing {model.name} Simulator...")
+# # Simulator takes parameter_values directly, NO standalone parameters list
+# simulator = pybop.pybamm.Simulator(
+#     model,
+#     parameter_values=parameters,
+#     protocol=dataset
+# )
+#
+# # Standard problem definition pipeline
+# cost = pybop.SumSquaredError(dataset)
+# problem = pybop.Problem(simulator, cost)
+#
+# options = pybop.PintsOptions(
+#     verbose=True,
+#     max_iterations=150,
+#     max_unchanged_iterations=30,
+# )
+# optim = pybop.XNES(problem, options=options)
+# optim.set_population_size(10)
+#
+# print("Starting XNES Optimization...")
+# result = optim.run()
+#
+# # ==============================================================================
+# # 5. Results & Visualization
+# # ==============================================================================
+# # print(f"| Model: {model.name} | Cost: {result.x} |")
+# # print("Optimized Thermodynamic Parameters:")
+#
+# # Extract specific keys from the PyBOP result dictionary
+# for key in free_parameters.keys():
+#     print(f"  {key}: {result.best_inputs.get(key)}")
+#
+# pybop.plot.problem(problem, result.best_inputs, title="Optimized OCP Fit - 0.2A Discharge")
 
 # # --- FIX: no initial_soc — it would overwrite the concentrations you just set ---
-# sol = sim.solve(t)
-#
-# VS = sol['Voltage [V]'].entries
-# plt.plot(sol['Time [s]'].entries, VS, label='Sim')
-# plt.plot(t, V, label='Data')
-# plt.legend()
-# plt.xlabel('Time [s]')
-# plt.ylabel('Voltage [V]')
-# plt.title('Validation: fitted stoichiometric window vs measured discharge')
-# plt.show()
+sol = sim.solve(t)
+
+VS = sol['Voltage [V]'].entries
+plt.plot(sol['Time [s]'].entries, VS, label='PyBaMM')
+plt.plot(t, V, label='Experiment')
+plt.legend()
+plt.xlabel('Time [s]')
+plt.ylabel('Voltage [V]')
+plt.title('Fitted stoichiometric window vs measured discharge')
+plt.show()

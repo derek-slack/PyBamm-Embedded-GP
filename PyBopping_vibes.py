@@ -99,7 +99,6 @@ parameters = {
 }
 
 parameter_values = pybamm.get_size_distribution_parameters(parameter_values)
-parameter_values.set_initial_state(1)
 parameter_values.update(parameters)
 
 current_interpolant = pybamm.Interpolant(t, Amps, pybamm.t)

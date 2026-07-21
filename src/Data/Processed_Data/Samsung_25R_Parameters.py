@@ -19,7 +19,7 @@ def create_OCP(SOC, OCP):
         return pybamm.Interpolant(SOC, OCP, sto, interpolator="cubic")
     return OCP_function
 
-parameters = pybamm.ParameterValues("Mohtat2020")
+parameters = pybamm.ParameterValues("Chen2020")
 
 e, f, g, h = data['Best Parameters']  # these are INDICES, not fractions
 
@@ -130,8 +130,7 @@ parameters.update({
     "Maximum concentration in positive electrode [mol.m-3]": c_p_max,
     "Initial concentration in negative electrode [mol.m-3]": x_100 * c_n_max,
     "Initial concentration in positive electrode [mol.m-3]": y_100 * c_p_max,
-    "Negative particle radius[m]": 8.279995569763729e-06,
-    "Positive particle radius[m]": 6.340716377260668e-06
+
 })
 
 def samsung_25r_params():
